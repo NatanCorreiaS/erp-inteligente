@@ -49,7 +49,7 @@ flowchart TB
 
         subgraph AI["Camada de IA"]
             RM["Recipe Matcher<br/>deepseek-flash ou modelo ajustado"]
-            PL["Planner · deepseek-v4-pro<br/>skills · memórias filtradas 🔒"]
+            PL["Planner · deepseek-flash<br/>skills · memórias filtradas 🔒"]
             ROCONN["🔒 Ferramentas de leitura<br/>conexão read-only + authorizer<br/>só views v_ai_*"]
         end
 
@@ -67,7 +67,7 @@ flowchart TB
     end
 
     subgraph EXT["Provedor externo · HTTPS · sem dados sensíveis"]
-        DS["DeepSeek API<br/>deepseek-v4-pro · deepseek-flash"]
+        DS["DeepSeek API<br/>deepseek-flash · deepseek-v4-pro opcional"]
     end
 
     subgraph FT["Fine-tuning · offline"]
@@ -533,12 +533,12 @@ flowchart TB
 
 ## Tecnologia
 
-App **desktop nativo** em **C# + Avalonia** (não é web nem SaaS). Banco **SQLite** criptografado com **SQLCipher**, com FTS5 e `sqlite-vec`. LLMs da **DeepSeek**: **`deepseek-v4-pro`** (planejamento) e **`deepseek-flash`** (receitas). Embeddings: modelo local em `127.0.0.1`, opcional. SQL Server, MongoDB e n8n **não** são usados; a seção de Segurança mostra como cada mecanismo pedido foi implementado no SQLite. Detalhes em [`references/STACK.md`](references/STACK.md).
+App **desktop nativo** em **C# + Avalonia** (não é web nem SaaS). Banco **SQLite** criptografado com **SQLCipher**, com FTS5 e `sqlite-vec`. LLM da **DeepSeek**: **`deepseek-flash`** (servido pelo DeepSeek-V4.1-Flash) no planejamento e nas receitas; o `deepseek-v4-pro` é opcional no planejamento. Embeddings: modelo local em `127.0.0.1`, opcional. SQL Server, MongoDB e n8n **não** são usados; a seção de Segurança mostra como cada mecanismo pedido foi implementado no SQLite. Detalhes em [`references/STACK.md`](references/STACK.md).
 
 ## Parte de IA
 
 - **Diagrama da arquitetura** (LLM, RAG, fine-tuning e interface): seção [Diagrama da arquitetura](#diagrama-da-arquitetura) acima.
-- **LLM e custo:** `deepseek-v4-pro` + `deepseek-flash` custam **≈ ¥ 114,70 por 1.000 usos** no preço de pico, caindo para ≈ ¥ 67,30 quando 60% dos pedidos viram receitas. Comparativo com `deepseek-flash` em tudo e com o planejamento sem receitas em [`references/IA.md`](references/IA.md).
+- **LLM e custo:** o `deepseek-flash` nos dois papéis custa **≈ ¥ 29,30 por 1.000 usos** no preço de pico, caindo para ≈ ¥ 18,50 quando 60% dos pedidos viram receitas. Comparativo com o `deepseek-v4-pro` no planejamento e com o planejamento sem receitas em [`references/IA.md`](references/IA.md).
 - **RAG:** chunks por seção `##` dos 22 procedimentos, indexados na abertura, com busca FTS5/BM25 sem acento; memórias e trechos relevantes entram no pedido como dados delimitados. Com embeddings ligados em Configurações (um modelo local em `127.0.0.1`), a busca é híbrida: top-20 do BM25 + top-20 por cosseno (distância pelo `sqlite-vec`), combinados por *Reciprocal Rank Fusion*; a pergunta vai mascarada e, sem embeddings, a busca continua só BM25.
 - **Memórias:** por armazém, gravadas pela IA (`remember`) e pelo sistema (rejeições) através de um filtro que recusa dados pessoais e texto com cara de instrução; só o supervisor corrige e arquiva, na tela Memórias.
 - **Fine-tuning:** um modelo aberto pequeno com LoRA transforma pedidos em `{intent, recipe, params}`. Métricas: *exact match*, F1 por campo e % de JSON válido, comparados com o `deepseek-flash` em *few-shot*.
@@ -546,7 +546,7 @@ App **desktop nativo** em **C# + Avalonia** (não é web nem SaaS). Banco **SQLi
 - **Ferramentas da IA:** oito de leitura (`search_products`, `get_product`, `get_stock`, `search_locations`, `search_zones`, `search_lots`, `search_orders`, `search_partners`), `load_skill` (corpo de uma skill sob demanda), `propose_plan` (até 3 alternativas, só simula), `propose_skill` (rascunho de skill, só para o supervisor), `search_knowledge` e `search_memories` (BM25), `remember` (memória pelo filtro de proteção) e `offer_options` (botões). A IA só vê o que o direito efetivo permite.
 - **Skills (feature 4):** procedimentos no formato `SKILL.md` dos agentes de IA (`nome`, `descricao`, `operacoes` e corpo em Markdown), em português. O prompt leva só o índice e a IA carrega o corpo quando precisa. As 6 iniciais vêm embutidas; as criadas ficam no banco cifrado, com versões e auditoria. Só o supervisor (`skill.manage`) cria e edita, na tela Skills ou confirmando uma skill redigida pela IA; os demais papéis só leem.
 - **Modo proativo:** assume padrões razoáveis e lista as suposições. Se a zona, o endereço ou o produto não existe, propõe o plano que o cria antes da movimentação.
-- **Pontos difíceis:** alucinação, pedidos fora do escopo e prompt injection, com métricas e conjuntos de avaliação em [`references/IA.md`](references/IA.md), seção 5. Os conjuntos (50 pedidos com gabarito, 40 perguntas sobre os procedimentos, 30 fora do escopo e 10 proativos) ficam em `tools/eval` e rodam com `tools/Nexus.Eval`. Medido sem LLM: o RAG acha o documento certo entre os 4 primeiros em 100% das perguntas; em 1º lugar, 80% só com BM25 e 87,5% na busca híbrida com o modelo local. Medido com a DeepSeek (2026-11-14): 92% dos 50 pedidos viram o plano do gabarito, 100% de recusas corretas nos 30 fora do escopo e 100% nos 10 proativos; nas 40 perguntas, 97,5% das respostas têm o conteúdo esperado, mas só 15% citam o código do documento, porque o prompt ainda não exige a citação.
+- **Pontos difíceis:** alucinação, pedidos fora do escopo e prompt injection, com métricas e conjuntos de avaliação em [`references/IA.md`](references/IA.md), seção 5. Os conjuntos (50 pedidos com gabarito, 40 perguntas sobre os procedimentos, 30 fora do escopo e 10 proativos) ficam em `tools/eval` e rodam com `tools/Nexus.Eval`. Medido sem LLM: o RAG acha o documento certo entre os 4 primeiros em 100% das perguntas; em 1º lugar, 80% só com BM25 e 87,5% na busca híbrida com o modelo local. Medido com a DeepSeek (2026-11-14, com o `deepseek-v4-pro` no planejamento, que era o padrão; o `deepseek-flash` ainda não foi medido): 92% dos 50 pedidos viram o plano do gabarito, 100% de recusas corretas nos 30 fora do escopo e 100% nos 10 proativos; nas 40 perguntas, 97,5% das respostas têm o conteúdo esperado, mas só 15% citam o código do documento, porque o prompt ainda não exige a citação.
 
 ## Parte de Segurança
 
@@ -605,6 +605,7 @@ Permissão e regras de cada uma em [`references/ARQUITETURA.md`](references/ARQU
   - **Auditoria:** painel com filtros e verificação da cadeia.
   - **Custos:** painel com tokens e custo estimado por papel e modelo, a partir de `llm_usage`.
   - **Instaladores:** Windows (zip e Inno Setup) e Linux (tar.gz com `install.sh`), *self-contained*.
+- **Treinamento guiado (feature 11):** o botão Treinamento abre uma cópia do sistema sobre um banco fictício descartável e guia o recém-chegado, passo a passo, pelas telas e pela IA: a área de cada passo fica destacada e o resto, bloqueado. As lições seguem o papel de quem treina (9 no total, incluindo pedir ao Nexus e aprovar uma operação crítica). Nada altera o armazém real; ficam na auditoria o início, as lições concluídas e o fim, e os tokens gastos entram em Custos de IA.
 - **Modelo por papel e fine-tuning (feature 8):** DeepSeek e um modelo local ajustado. O administrador escolhe, em Configurações, o modelo do planejamento e do reconhecimento de receitas. A chave da DeepSeek fica no cofre do sistema. O experimento de fine-tuning do Matcher está em `tools/finetune`. O Qwen2.5-1.5B com LoRA foi treinado numa GTX 1660 (3 h) e teve 100% no teste gerado. Nos 40 pedidos escritos à mão, teve 80% de *exact match*, porque inventava o valor que faltava. O app passou a recusar todo valor que não está no pedido (`RecipeGrounding`, para qualquer provedor), e com isso o resultado subiu para 92,5%. A comparação com o `deepseek-flash` ainda não foi rodada ([`IA.md`](references/IA.md), seção 4).
 - **Receitas (feature 7):** 3 planos iguais executados viram uma receita candidata, que só o supervisor promove. Uma receita ativa é usada pela tela Receitas sem LLM, ou reconhecida pelo Recipe Matcher (uma chamada curta ao modelo rápido, sem ferramentas) antes do planejamento. O plano gerado passa pelo motor como qualquer outro. A receita é suspensa quando a DSL ou a skill muda, e despromovida após 3 falhas seguidas.
 

@@ -57,7 +57,7 @@ public sealed class LlmUsageTests : IDisposable
             .Enqueue(Text("ABC-123 tem 80 caixas.", 1500, 40));
         await Run(Request);
 
-        Assert.Equal(1, Count("SELECT COUNT(*) FROM llm_usage WHERE role = 'planner' AND provider = 'deepseek' AND model = 'deepseek-v4-pro' " +
+        Assert.Equal(1, Count("SELECT COUNT(*) FROM llm_usage WHERE role = 'planner' AND provider = 'deepseek' AND model = 'deepseek-flash' " +
                               "AND calls = 2 AND prompt_tokens = 2500 AND completion_tokens = 90 AND result = 'answer' AND user_id = 1"));
         Assert.Equal(1, Count("SELECT COUNT(*) FROM llm_usage WHERE role = 'matcher' AND model = 'deepseek-flash' AND result = 'no_match' " +
                               "AND prompt_tokens = 300"));

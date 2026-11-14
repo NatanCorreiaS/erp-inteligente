@@ -16,6 +16,8 @@ public partial class PaletteContrastTests
         { "OnBrand", "BrandPrimary", 4.5 }, { "OnBrand", "BrandAccent", 4.5 },
         { "BrandPrimary", "SurfaceSidebar", 3 },
         { "BrandAccent", "Surface", 3 }, { "BrandAccent", "SurfaceRaised", 3 },
+        // Outline of the highlighted control over the dimmed screen of the training (UI.md, section 10).
+        { "BrandAccent", "Background", 3 },
         { "StatusSuccess", "Surface", 4.5 }, { "StatusWarning", "Surface", 4.5 },
         { "StatusError", "Surface", 4.5 }, { "StatusInfo", "Surface", 4.5 },
         { "OnStatus", "StatusSuccess", 4.5 }, { "OnStatus", "StatusWarning", 4.5 },

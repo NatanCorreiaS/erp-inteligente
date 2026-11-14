@@ -1,0 +1,100 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:erp_inteligente.ViewModels"
+             xmlns:views="using:erp_inteligente.Views"
+             x:Class="erp_inteligente.Views.ShellView"
+             x:DataType="vm:ShellViewModel">
+
+    <!-- The menu column and the content container (references/UI.md, section 2); hosted by the main window and by the
+         training window. Tutorial.Anchor names what a training step can highlight. -->
+    <UserControl.Resources>
+        <!-- Menu button content: icon on the left, text on the right, pending counter at the end -->
+        <DataTemplate x:Key="NavItemTemplate" x:DataType="vm:NavigationItem">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <PathIcon Data="{Binding IconKey, Converter={StaticResource IconKeyConverter}}" />
+                <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                           Text="{Binding Label}" FontWeight="Medium" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="tabular warning"
+                           Text="{Binding Badge}" IsVisible="{Binding HasBadge}"
+                           ToolTip.Tip="Planos aguardando a sua aprovação" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid ColumnDefinitions="232,1,*">
+        <!-- Menu column -->
+        <DockPanel Grid.Column="0" Background="{DynamicResource SurfaceSidebarBrush}">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="16,18,16,22" Spacing="10">
+                <PathIcon Data="{StaticResource Icon.Nexus}" Width="20" Height="20"
+                          Foreground="{DynamicResource BrandPrimaryBrush}" />
+                <TextBlock Classes="title" FontSize="22" Text="Nexus" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,0,0,8">
+                <Rectangle Classes="rule" Margin="0,0,0,8" />
+                <Grid ColumnDefinitions="Auto,*" Margin="16,4,16,8" views:Tutorial.Anchor="footer:user">
+                    <PathIcon Data="{StaticResource Icon.User}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                        <TextBlock Text="{Binding UserName}" FontWeight="Medium" />
+                        <TextBlock Classes="label" Text="{Binding UserDetail}" />
+                    </StackPanel>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding FooterItems}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NavigationItem">
+                            <RadioButton Classes="nav" GroupName="Navigation"
+                                         IsChecked="{Binding IsActive, Mode=OneWay}"
+                                         Command="{Binding $parent[views:ShellView].((vm:ShellViewModel)DataContext).NavigateCommand}"
+                                         CommandParameter="{Binding}"
+                                         views:Tutorial.Anchor="{Binding IconKey, StringFormat='nav:{0}'}"
+                                         Content="{Binding}"
+                                         ContentTemplate="{StaticResource NavItemTemplate}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Classes="neutral" BorderThickness="0" HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" Padding="16,0" Height="40"
+                        Command="{Binding SignOutCommand}" ToolTip.Tip="Encerrar a sessão">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <PathIcon Data="{StaticResource Icon.SignOut}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding SignOutLabel}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <!-- The screens scroll when they do not fit the height; the header and the footer stay in place. The bar
+                 is always shown while there is something to scroll, so the hidden buttons are not a surprise. -->
+            <ScrollViewer Name="MenuScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                          AllowAutoHide="False">
+                <ItemsControl ItemsSource="{Binding MenuItems}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NavigationItem">
+                            <RadioButton Classes="nav" GroupName="Navigation"
+                                         IsChecked="{Binding IsActive, Mode=OneWay}"
+                                         Command="{Binding $parent[views:ShellView].((vm:ShellViewModel)DataContext).NavigateCommand}"
+                                         CommandParameter="{Binding}"
+                                         views:Tutorial.Anchor="{Binding IconKey, StringFormat='nav:{0}'}"
+                                         Content="{Binding}"
+                                         ContentTemplate="{StaticResource NavItemTemplate}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </DockPanel>
+
+        <Rectangle Grid.Column="1" Classes="vrule" />
+
+        <!-- Content container: title on top, screen content below -->
+        <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*" Margin="28,18,28,20">
+            <!-- Audit chain alert for users with audit.read: a line with icon and text, no tinted box -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,0,0,12" IsVisible="{Binding HasAuditAlert}">
+                <PathIcon Classes="error" Data="{StaticResource Icon.Error}" Width="14" Height="14"
+                          Margin="0,2,10,0" VerticalAlignment="Top" />
+                <TextBlock Grid.Column="1" Text="{Binding AuditAlert}" TextWrapping="Wrap" FontWeight="Medium" />
+            </Grid>
+            <TextBlock Grid.Row="1" Classes="title" Text="{Binding CurrentPage.Title, FallbackValue=''}" Margin="0,0,0,14"
+                       HorizontalAlignment="Left" views:Tutorial.Anchor="title" />
+            <ContentControl Grid.Row="2" Content="{Binding CurrentPage}" views:Tutorial.Anchor="content" />
+        </Grid>
+    </Grid>
+</UserControl>

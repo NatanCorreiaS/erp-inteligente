@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:erp_inteligente.ViewModels"
+        xmlns:views="using:erp_inteligente.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1360" d:DesignHeight="820"
@@ -10,86 +11,5 @@
         Width="1360" Height="820" MinWidth="1100" MinHeight="680"
         WindowStartupLocation="CenterScreen">
 
-    <Window.Resources>
-        <!-- Menu button content: icon on the left, text on the right, pending counter at the end -->
-        <DataTemplate x:Key="NavItemTemplate" x:DataType="vm:NavigationItem">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <PathIcon Data="{Binding IconKey, Converter={StaticResource IconKeyConverter}}" />
-                <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
-                           Text="{Binding Label}" FontWeight="Medium" />
-                <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="tabular warning"
-                           Text="{Binding Badge}" IsVisible="{Binding HasBadge}"
-                           ToolTip.Tip="Planos aguardando a sua aprovação" />
-            </Grid>
-        </DataTemplate>
-    </Window.Resources>
-
-    <Grid ColumnDefinitions="232,1,*">
-        <!-- Menu column -->
-        <DockPanel Grid.Column="0" Background="{DynamicResource SurfaceSidebarBrush}">
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="16,18,16,22" Spacing="10">
-                <PathIcon Data="{StaticResource Icon.Nexus}" Width="20" Height="20"
-                          Foreground="{DynamicResource BrandPrimaryBrush}" />
-                <TextBlock Classes="title" FontSize="22" Text="Nexus" VerticalAlignment="Center" />
-            </StackPanel>
-
-            <StackPanel DockPanel.Dock="Bottom" Margin="0,0,0,8">
-                <Rectangle Classes="rule" Margin="0,0,0,8" />
-                <Grid ColumnDefinitions="Auto,*" Margin="16,4,16,8">
-                    <PathIcon Data="{StaticResource Icon.User}" VerticalAlignment="Top" Margin="0,2,0,0" />
-                    <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                        <TextBlock Text="{Binding UserName}" FontWeight="Medium" />
-                        <TextBlock Classes="label" Text="{Binding UserDetail}" />
-                    </StackPanel>
-                </Grid>
-                <ItemsControl ItemsSource="{Binding FooterItems}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:NavigationItem">
-                            <RadioButton Classes="nav" GroupName="Navigation"
-                                         IsChecked="{Binding IsActive, Mode=OneWay}"
-                                         Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).NavigateCommand}"
-                                         CommandParameter="{Binding}"
-                                         Content="{Binding}"
-                                         ContentTemplate="{StaticResource NavItemTemplate}" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <Button Classes="neutral" BorderThickness="0" HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Left" Padding="16,0" Height="40"
-                        Command="{Binding SignOutCommand}" ToolTip.Tip="Encerrar a sessão">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <PathIcon Data="{StaticResource Icon.SignOut}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBlock Text="Sair" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-
-            <ItemsControl ItemsSource="{Binding MenuItems}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:NavigationItem">
-                        <RadioButton Classes="nav" GroupName="Navigation"
-                                     IsChecked="{Binding IsActive, Mode=OneWay}"
-                                     Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).NavigateCommand}"
-                                     CommandParameter="{Binding}"
-                                     Content="{Binding}"
-                                     ContentTemplate="{StaticResource NavItemTemplate}" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </DockPanel>
-
-        <Rectangle Grid.Column="1" Classes="vrule" />
-
-        <!-- Content container: title on top, screen content below -->
-        <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*" Margin="28,18,28,20">
-            <!-- Audit chain alert for users with audit.read: a line with icon and text, no tinted box -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,0,0,12" IsVisible="{Binding HasAuditAlert}">
-                <PathIcon Classes="error" Data="{StaticResource Icon.Error}" Width="14" Height="14"
-                          Margin="0,2,10,0" VerticalAlignment="Top" />
-                <TextBlock Grid.Column="1" Text="{Binding AuditAlert}" TextWrapping="Wrap" FontWeight="Medium" />
-            </Grid>
-            <TextBlock Grid.Row="1" Classes="title" Text="{Binding CurrentPage.Title, FallbackValue=''}" Margin="0,0,0,14" />
-            <ContentControl Grid.Row="2" Content="{Binding CurrentPage}" />
-        </Grid>
-    </Grid>
+    <views:ShellView />
 </Window>

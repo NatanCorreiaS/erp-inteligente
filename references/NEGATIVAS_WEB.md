@@ -53,13 +53,13 @@ Por que este documento existe: LLMs e kits de UI tendem a reproduzir o mesmo vis
 | Badges e pílulas coloridas em cada linha de tabela | Estado como texto + ícone na coluna de estado; cor só quando o estado exige atenção |
 | Callout com barra lateral colorida e fundo tingido | Linha de mensagem com ícone e texto na cor semântica, sem fundo nem barra (`UI.md`, seção 9.2) |
 | Toasts empilhados no canto da tela | O resultado aparece **onde a ação aconteceu** (no quadro do plano, na linha da tarefa); avisos persistentes vão para a linha de estado da tela |
-| Modal com fundo escurecido e desfocado sobre a página | Diálogo nativo (`Window.ShowDialog`) quando uma decisão precisa bloquear; o resto acontece na própria tela |
+| Modal com fundo escurecido e desfocado sobre a página | Diálogo nativo (`Window.ShowDialog`) quando uma decisão precisa bloquear; o resto acontece na própria tela. **Exceção:** a janela de treinamento (abaixo) |
 | Menu "⋯" que esconde as ações principais | Ações visíveis na tela; o menu de contexto nativo (`ContextMenu`) só repete atalhos |
 | Botão flutuante (FAB) | Ação principal fixa no lugar da tela (ex.: Enviar no rodapé do Nexus) |
 | Skeleton com shimmer, spinners de página inteira | Os dados existentes continuam na tela; um indicador de progresso pequeno aparece **só** na área que está esperando |
 | "Carregar mais", rolagem infinita, paginação de site | `DataGrid` virtualizada com rolagem contínua e filtros |
 | Estado vazio com ilustração e botão "Comece agora!" | Uma linha de texto dizendo o que está vazio e como preencher |
-| Tour de onboarding, tooltips em bolha que apontam para botões, checklist de "primeiros passos" | Rótulos claros e tooltips nativos curtos no hover/foco |
+| Tour de onboarding, tooltips em bolha que apontam para botões, checklist de "primeiros passos" **no sistema real** | Rótulos claros e tooltips nativos curtos no hover/foco. O guia passo a passo existe, mas só na **janela de treinamento** (`UI.md`, seção 10), que é pedida pelo usuário, roda sobre dados fictícios e nunca aparece sozinha |
 | Textos de marketing: "Bem-vindo de volta! 👋", "Ops! Algo deu errado 😅", "Turbine sua produtividade" | Linguagem operacional, direta e em português: "Plano executado", "Falha ao gravar: endereço A-03-02 bloqueado" |
 | Avatar redondo com a inicial do usuário, foto de perfil | Nome e papel do usuário em texto no rodapé da coluna de menus |
 | Seletor claro/escuro na interface, banners de "novidades", upgrade de plano | Um tema; nada de upsell ou comunicação de produto dentro do ERP |
@@ -163,4 +163,5 @@ Antes de considerar uma tela pronta:
 - [ ] Fonte Barlow, com `tnum` em números e códigos.
 - [ ] Toda ação funciona pelo teclado e tem foco visível.
 - [ ] Sem animações, exceto o indicador de progresso.
+- [ ] Camada escurecida e painel de passo só existem na janela de treinamento (decisão de 2026-11-14): sem blur, sem animação, sem seta nem balão, cantos retos, e nunca sobre o sistema real.
 - [ ] Textos em português, operacionais, sem termos técnicos.

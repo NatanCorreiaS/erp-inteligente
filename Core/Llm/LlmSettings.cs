@@ -16,7 +16,11 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
     public const string KeyEntry = "llm.deepseek.key";
     public const string ModelEntry = "llm.deepseek.model";
     public const string StrongModel = "deepseek-v4-pro";
+    /// <summary>The API id of DeepSeek's Flash model (served by DeepSeek-V4.1-Flash; the id carries no version).</summary>
     public const string FastModel = "deepseek-flash";
+
+    /// <summary>The planning model when the administrator has not chosen one (decision of 2026-11-14).</summary>
+    public const string DefaultPlannerModel = FastModel;
     public const string LocalModel = "nexus-matcher";
     public const int DefaultLocalPort = 8080;
     public const int MinKeyLength = 8;
@@ -121,13 +125,13 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
 
     // ---- models --------------------------------------------------------------------------------------------
 
-    /// <summary>The DeepSeek planning model; an unknown stored value falls back to <see cref="StrongModel"/>.</summary>
+    /// <summary>The DeepSeek planning model; an unknown stored value falls back to <see cref="DefaultPlannerModel"/>.</summary>
     public string Model
     {
         get
         {
             var text = ReadText(ModelEntry);
-            return text is not null && SupportedModels.Contains(text) ? text : StrongModel;
+            return text is not null && SupportedModels.Contains(text) ? text : DefaultPlannerModel;
         }
         set
         {

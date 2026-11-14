@@ -51,7 +51,9 @@ internal sealed class AppController(IWindowHost desktop, AppHost host, TimeSpan?
         host.VerifyAudit();
 
         var window = new MainWindow();
-        var shell = host.CreateShell(new DialogService(window));
+        // Input in the training window counts as activity of the real session.
+        var training = new TrainingLauncher(host, window, host.Session.Touch);
+        var shell = host.CreateShell(new DialogService(window), training);
         window.DataContext = shell;
 
         var ending = false;
@@ -63,6 +65,8 @@ internal sealed class AppController(IWindowHost desktop, AppHost host, TimeSpan?
                 return;
             ending = true;
             timer.Stop();
+            // The training never outlives the session that opened it.
+            training.CloseOpenWindow();
             ShowLogin(notice);
             window.Close();
         }

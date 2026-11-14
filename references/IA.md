@@ -6,14 +6,14 @@
 
 | Papel | Modelo | Por quê |
 |-------|--------|---------|
-| Planner (planeja e trata exceções) | **`deepseek-v4-pro`** | Boa qualidade em tool calling com muitas etapas, com raciocínio (*thinking*) devolvido no laço de ferramentas. |
+| Planner (planeja e trata exceções) | **`deepseek-flash`** | Tool calling com raciocínio (*thinking*) devolvido no laço de ferramentas, a cerca de um quarto do custo do `deepseek-v4-pro`. Decisão de 2026-11-14; o `deepseek-v4-pro` continua como opção em Configurações. |
 | Receitas e extração de parâmetros | **`deepseek-flash`**, depois o modelo do fine-tuning | Tarefa curta e repetitiva; é o modelo mais barato do provedor. |
 | Embeddings do RAG | **Modelo local `nexus-embed`** (`paraphrase-multilingual-MiniLM-L12-v2`) | A DeepSeek não oferece embeddings. O modelo local roda em `127.0.0.1`, sem custo e sem envio de dados. |
 
 O único provedor externo é a **DeepSeek** (decisão de 2026-11-14). A interface `ILlmProvider` continua separando o app do provedor.
 
 **Estado da implementação (feature 3):** o adaptador implementado é o da **DeepSeek**.
-- **Modelos:** `deepseek-v4-pro` no Planner por padrão, ou `deepseek-flash`, escolhidos em Configurações.
+- **Modelos:** `deepseek-flash` no Planner por padrão, ou `deepseek-v4-pro`, escolhidos em Configurações. `deepseek-flash` é o id que a API aceita; em 2026-11-14 a documentação da DeepSeek informa que ele é servido pelo DeepSeek-V4.1-Flash, e não existe um id `deepseek-v4.1-flash`.
 - **Chave:** digitada pelo administrador e guardada no cofre do SO.
 - **Limites por pedido:** 4 planos inválidos, 12 rodadas, 3 propostas válidas, 8.192 tokens por chamada e 60.000 por pedido. Passou do limite, a tarefa é escalada ao operador, salvo quando já há propostas válidas: essas são entregues. É a defesa contra "custo descontrolado" da seção 5.
 - **Direitos:** a IA tem os direitos operacionais do usuário que pede (decisão de 2026-11-08). Ver [`SEGURANCA_DADOS.md`](SEGURANCA_DADOS.md), seção 3.1.
@@ -21,7 +21,7 @@ O único provedor externo é a **DeepSeek** (decisão de 2026-11-14). A interfac
 - **Modelo por papel (feature 8):** o administrador escolhe o modelo de cada papel em Configurações:
   - Planejamento: `deepseek-v4-pro` ou `deepseek-flash`.
   - Matcher: os mesmos, mais o modelo local ajustado (`nexus-matcher`).
-  - O padrão é `deepseek-v4-pro` no planejamento e `deepseek-flash` no Matcher.
+  - O padrão é `deepseek-flash` nos dois papéis.
 
 **Privacidade:** o que sai da máquina é sempre não sensível (views `v_ai_*`, procedimentos fictícios e memórias filtradas). Por isso a escolha do provedor afeta custo e qualidade, mas não expõe CPF, contatos ou custos. Quem quiser zero envio de dados pode usar o modelo do fine-tuning e embeddings locais para receitas e RAG; o Planner ainda depende de um provedor.
 
@@ -57,19 +57,19 @@ No início, 70% dos pedidos passam pelo planejamento e 30% por receitas. Com o u
 
 | Configuração | 70% planejamento | 40% planejamento |
 |--------------|-----------------:|-----------------:|
-| **`deepseek-v4-pro` + `deepseek-flash` (padrão, pico)** | **≈ ¥ 114,70** | **≈ ¥ 67,30** |
-| `deepseek-flash` em tudo (pico) | ≈ ¥ 29,30 | ≈ ¥ 18,50 |
-| `deepseek-v4-pro` sem receitas (100% planejamento, pico) | ≈ ¥ 162,00 | — |
+| **`deepseek-flash` nos dois papéis (padrão, pico)** | **≈ ¥ 29,30** | **≈ ¥ 18,50** |
+| `deepseek-v4-pro` no planejamento + `deepseek-flash` nas receitas (pico) | ≈ ¥ 114,70 | ≈ ¥ 67,30 |
+| `deepseek-flash` sem receitas (100% planejamento, pico) | ≈ ¥ 40,00 | — |
 
 **Contas do padrão (70/30):**
-- 700 × (12.000 × 9 + 2.000 × 27) / 1.000.000 = ¥ 113,40
+- 700 × (12.000 × 2 + 2.000 × 8) / 1.000.000 = ¥ 28,00
 - 300 × (1.500 × 2 + 150 × 8) / 1.000.000 = ¥ 1,26
 - Embeddings: sem custo (modelo local)
 
 **Leituras:**
-- As **receitas** são o que mais reduz o custo: sair de 70% para 40% de planejamento corta ~41% do gasto.
+- As **receitas** são o que mais reduz o custo: sair de 70% para 40% de planejamento corta ~37% do gasto.
 - O **cache de prompt** (prompt de sistema + definições de ferramentas, que se repetem em todo pedido) não entrou na conta e reduz ainda mais o custo de entrada. **Estado (2026-11-14):** a DeepSeek faz o cache do prefixo do prompt sozinha e informa quantos tokens leu dele (`prompt_cache_hit_tokens`), então cada rodada do laço de ferramentas relê as anteriores do cache. Esses tokens voltam em `LlmUsage` e ficam em `llm_usage` (migração 010); o painel de custos cobra a leitura do cache a 10% do preço de entrada. A DeepSeek não cobra a gravação no cache, então a coluna de tokens gravados fica em zero.
-- `deepseek-flash` em tudo é ~4× mais barato, mas fica como opção configurável: o Planner é onde erros custam mais.
+- O `deepseek-v4-pro` no planejamento custa ~4× mais. Fica como opção configurável para quem quiser mais qualidade no Planner, que é onde erros custam mais.
 
 ## 2.1 Skills sob demanda (feature 4)
 
@@ -169,7 +169,7 @@ Os conjuntos de avaliação são fictícios, versionados junto com o código e r
 
 As perguntas usam o vocabulário dos documentos, então o BM25 já acha o documento entre os 4 primeiros; o ganho da busca híbrida aparece na ordem (o certo em 1º lugar).
 
-**Conjuntos que chamam o LLM (2026-11-14):** `deepseek-v4-pro` no Planner e `deepseek-flash` no Matcher, RAG só BM25. Relatório em `tools/eval/results/20261114-2103-deepseek_deepseek-v4-pro_bm25.md`.
+**Conjuntos que chamam o LLM (2026-11-14):** `deepseek-v4-pro` no Planner (o padrão naquele momento) e `deepseek-flash` no Matcher, RAG só BM25. **Pendente:** repetir com o `deepseek-flash` no Planner, que é o padrão desde então; o comando abaixo já usa o padrão novo. Relatório em `tools/eval/results/20261114-2103-deepseek_deepseek-v4-pro_bm25.md`.
 
 | Conjunto | Casos | Métrica | Resultado |
 |----------|------:|---------|----------:|

@@ -53,12 +53,13 @@ public class LlmSettingsTests
     }
 
     [Fact]
-    public void Model_DefaultsToStrong_AndPersists()
+    public void Model_DefaultsToFlash_AndPersists()
     {
         var (s, _) = Make();
-        Assert.Equal("deepseek-v4-pro", s.Model);
-        s.Model = "deepseek-flash";
         Assert.Equal("deepseek-flash", s.Model);
+        Assert.Equal(LlmSettings.FastModel, LlmSettings.DefaultPlannerModel);
+        s.Model = "deepseek-v4-pro";
+        Assert.Equal("deepseek-v4-pro", s.Model);
     }
 
     [Fact]
@@ -67,7 +68,7 @@ public class LlmSettingsTests
         var (s, store) = Make();
         Assert.Throws<ArgumentException>(() => s.Model = "modelo-estranho");
         store.Set("db1", "llm.deepseek.model", Encoding.UTF8.GetBytes("modelo-estranho"));
-        Assert.Equal("deepseek-v4-pro", s.Model);
+        Assert.Equal("deepseek-flash", s.Model);
     }
 
     [Fact]

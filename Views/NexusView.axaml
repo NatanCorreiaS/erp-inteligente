@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:erp_inteligente.ViewModels"
+             xmlns:views="using:erp_inteligente.Views"
              x:Class="erp_inteligente.Views.NexusView"
              x:DataType="vm:NexusViewModel">
 
@@ -42,13 +43,12 @@
         <Rectangle Grid.Row="3" Classes="rule" />
 
         <!-- Request field: Enter sends, Shift+Enter breaks the line -->
-        <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+        <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,12,0,0" views:Tutorial.Anchor="nexus:request">
             <TextBox Name="RequestBox" Grid.Column="0"
                      Text="{Binding Draft}"
                      PlaceholderText="Pedido"
                      AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" MaxLength="2000"
-                     IsEnabled="{Binding IsInputEnabled}"
-                     KeyDown="OnRequestKeyDown" />
+                     IsEnabled="{Binding IsInputEnabled}" />
             <Button Grid.Column="1" Classes="primary" Margin="10,0,0,0" VerticalAlignment="Bottom" Height="32"
                     Command="{Binding SendCommand}" ToolTip.Tip="Enviar (Enter)">
                 <StackPanel Orientation="Horizontal" Spacing="8">

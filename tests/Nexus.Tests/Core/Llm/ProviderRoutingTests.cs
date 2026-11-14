@@ -105,7 +105,7 @@ public sealed class ProviderRoutingTests
         var store = new InMemorySecretStore();
         var settings = new LlmSettings(store, "db1");
 
-        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel), settings.ChoiceFor(LlmUseRole.Planner));
+        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.DefaultPlannerModel), settings.ChoiceFor(LlmUseRole.Planner));
         Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), settings.ChoiceFor(LlmUseRole.Matcher));
 
         Assert.False(settings.IsConfigured);
@@ -114,9 +114,9 @@ public sealed class ProviderRoutingTests
         Assert.True(settings.IsConfiguredFor(LlmProviderKind.DeepSeek));
         Assert.NotNull(store.Get("db1", LlmSettings.KeyEntry));
 
-        settings.SetChoice(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel));
+        settings.SetChoice(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel));
         settings.SetChoice(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.Local, LlmSettings.LocalModel));
-        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), settings.ChoiceFor(LlmUseRole.Planner));
+        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel), settings.ChoiceFor(LlmUseRole.Planner));
         Assert.Equal(LlmProviderKind.Local, settings.ChoiceFor(LlmUseRole.Matcher).Provider);
 
         // The local model never plans; a model of another provider is refused; garbage and providers that no longer
@@ -127,7 +127,7 @@ public sealed class ProviderRoutingTests
         foreach (var stored in new[] { "deepseek:modelo-estranho", "outro:modelo", "2:deepseek-flash", "sem-dois-pontos" })
         {
             store.Set("db1", "llm.role.planner", Encoding.UTF8.GetBytes(stored));
-            Assert.Equal(LlmSettings.FastModel, settings.ChoiceFor(LlmUseRole.Planner).Model); // the legacy DeepSeek entry
+            Assert.Equal(LlmSettings.StrongModel, settings.ChoiceFor(LlmUseRole.Planner).Model); // the legacy DeepSeek entry
             Assert.Equal(LlmProviderKind.DeepSeek, settings.ChoiceFor(LlmUseRole.Planner).Provider);
         }
 
@@ -141,7 +141,7 @@ public sealed class ProviderRoutingTests
     public void A_deepseek_planner_choice_keeps_the_legacy_model_entry_in_step()
     {
         var settings = new LlmSettings(new InMemorySecretStore(), "db1");
-        settings.SetChoice(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel));
-        Assert.Equal(LlmSettings.FastModel, settings.Model);
+        settings.SetChoice(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel));
+        Assert.Equal(LlmSettings.StrongModel, settings.Model);
     }
 }

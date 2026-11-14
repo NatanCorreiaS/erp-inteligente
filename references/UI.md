@@ -48,8 +48,9 @@ A janela tem duas regiões fixas:
   1. **Nexus**, primeiro e selecionado ao abrir o app.
   2. As telas de consulta: Estoque, Endereços, Pedidos.
   3. Planos (histórico e aprovações pendentes), Skills, Memórias, Receitas, Auditoria, Custos de IA.
-  4. No rodapé, separados: o usuário logado, as configurações e o botão de sair.
+  4. No rodapé, separados: o usuário logado, Treinamento (seção 10), as configurações e o botão de sair.
 - Planos mostra um contador de aprovações pendentes quando o usuário pode aprovar.
+- Quando os botões não cabem na altura da janela, a lista de telas rola, com a barra de rolagem sempre visível. O cabeçalho e o rodapé (usuário, Treinamento, Configurações, Sair) ficam fixos.
 - A coluna não muda ao navegar. Só o container de conteúdo troca.
 
 ### 2.2 Container de conteúdo
@@ -298,6 +299,7 @@ O que cada usuário vê depende das permissões efetivas (`v_effective_permissio
 | Dados sensíveis (CPF, CNPJ completo, contato, custo unitário) | Mascarados para quem não tem `sensitive.read` |
 | Dados de outro armazém | Nunca aparecem: toda consulta usa o `warehouse_id` do usuário |
 | Configurações de provedores de LLM e de usuários | Só para quem tem `user.manage` / `role.manage` |
+| Treinamento | Todos os papéis veem o item; as lições são as do papel de cada um (seção 10) |
 
 A UI **esconde** o que o usuário não pode usar, mas isso é só conveniência. A regra de verdade continua no policy engine e no banco (defesa em profundidade, seção 12.1 de [`ARQUITETURA.md`](ARQUITETURA.md)).
 
@@ -342,6 +344,7 @@ As Views usam **só os nomes dos tokens**, nunca valores hexadecimais.
 | `StatusError` | `#FF6B5E` | Falhou, erro de validação, conexão perdida |
 | `StatusInfo` | `#5B9BF0` | Em andamento, consultando, informação |
 | `OnStatus` | `#0E0F11` | Texto e ícones sobre um preenchimento semântico |
+| `Scrim` | `#0E0F11` a 60% | Camada escurecida da janela de treinamento (seção 10); não é usada em mais nenhum lugar |
 
 Mensagens de estado são **linhas**: o ícone e a primeira palavra ("Falhou", "Crítico") ficam na cor semântica, e o restante do texto fica em `TextPrimary`. Não há fundo tingido, barra lateral colorida nem caixa (ver [`NEGATIVAS_WEB.md`](NEGATIVAS_WEB.md), seção 3).
 
@@ -389,6 +392,7 @@ Mínimos: **4,5:1** para texto (meta **7:1** no texto principal) e **3:1** para 
 | `OnBrand` sobre `BrandPrimary` / `BrandAccent` | 5,88 / 4,75 | 4,5 |
 | `BrandPrimary` sobre `SurfaceSidebar` (barra do item ativo) | 3,05 | 3 |
 | `BrandAccent` sobre `Surface` / `SurfaceRaised` (anel de foco) | 3,48 / 3,04 | 3 |
+| `BrandAccent` sobre `Background` (contorno da área destacada no treinamento) | 4,04 | 3 |
 | `StatusSuccess` / `StatusWarning` / `StatusError` / `StatusInfo` sobre `Surface` | 8,82 / 8,10 / 5,92 / 5,82 | 4,5 |
 | `OnStatus` sobre `StatusSuccess` / `StatusWarning` | 10,22 / 9,40 | 4,5 |
 | `Data1`–`Data5` sobre `Surface` | 6,49 / 6,36 / 5,95 / 7,21 / 5,14 | 3 |
@@ -436,3 +440,55 @@ Mínimos: **4,5:1** para texto (meta **7:1** no texto principal) e **3:1** para 
 - Estilos de controle (botão primário, botão neutro, linha de mensagem, quadro, faixa de totais) ficam em classes reutilizáveis (`Classes="primary"`, `Classes="message error"`...). Uma tela não define cor própria.
 - As fontes Barlow ficam em `Assets/Fonts/` como `AvaloniaResource`. `Program.cs` define a Barlow como fonte padrão (`FontManagerOptions`), o que inclui popups e tooltips. Os recursos `TextFont`, `TitleFont`, `TabularFont` e `TabularStrongFont` ficam em `Styles/Tokens.axaml`. Os cortes condensados são endereçados pelo arquivo (`.../BarlowCondensed-SemiBold.ttf#Barlow Condensed SemiBold`), porque a busca pela pasta casa "Barlow SemiBold" no lugar deles.
 - A Barlow não tem os glifos ✓ ⚠ ⊗ →: estados e setas são sempre ícones de `Styles/Icons.axaml`, nunca caracteres Unicode.
+
+---
+
+## 10. Treinamento guiado
+
+Para quem acabou de chegar: um ambiente de treinamento com dados fictícios, onde o sistema guia a pessoa pelas telas e pela IA. Decisão de 2026-11-14.
+
+### 10.1 Tela Treinamento
+
+- Item **Treinamento** no rodapé da coluna de menus, acima de Configurações, para todos os papéis.
+- A tela explica o que o treinamento é, lista as lições do papel do usuário (número, título, o que se aprende e o estado: "Não feita" ou "Concluída em …") e tem dois botões:
+  - **Iniciar treinamento** (vira "Continuar da lição N" ou "Refazer o treinamento"): abre na primeira lição ainda não concluída;
+  - **Abrir a lição selecionada**.
+- A tela não altera nada. O estado das lições vem dos eventos `training.lesson.complete` da auditoria.
+
+### 10.2 Janela de treinamento
+
+- Abre como diálogo nativo sobre a janela principal, que fica inerte enquanto isso.
+- É o mesmo shell do sistema (`ShellView`), sobre um banco fictício descartável (`TrainingSandbox`): mesma coluna de menus, mesmas telas, mesmo Nexus.
+- No topo, uma faixa fixa com ícone e texto: **"TREINAMENTO · dados fictícios · nada aqui altera o armazém real"**, e a lição atual à direita.
+- O usuário entra como um **usuário fictício do mesmo papel**: operador → João, supervisor → Maria, administrador → Carlos, auditor → Lúcia. A lição "Operação crítica" troca de João para Maria para mostrar que quem pede não aprova.
+- "Sair" vira **"Sair do treinamento"**. Sair, fechar a janela ou o fim da sessão real encerram o treinamento e apagam o banco fictício.
+- Configurações, dentro do treinamento, não mostra nem edita a chave do provedor.
+- O Nexus do treinamento chama a **IA de verdade**, com a chave configurada no sistema real. Cada passo que chama a IA avisa que consome tokens; o consumo aparece em Custos de IA no nome de quem treinou.
+
+### 10.3 Guia passo a passo
+
+É a única parte do app com camada escurecida (exceção registrada no [`NEGATIVAS_WEB.md`](NEGATIVAS_WEB.md), seção 3).
+
+- **Camada escurecida** (`Scrim`) sobre a janela inteira, com um **recorte retangular** na área que o passo usa, contornado por 2 px em `BrandAccent`. Sem blur, sem animação, cantos retos.
+- **Só a área destacada recebe o mouse.** O resto fica bloqueado até o passo terminar.
+- **Painel do passo:** painel reto em `SurfaceRaised`, com régua de 2 px em `BrandAccent` no topo, colocado ao lado do recorte (direita, esquerda, abaixo ou acima, o que couber). Quando o recorte ocupa a tela, o painel fica no canto superior direito dele. Sem recorte, fica no centro. Não tem seta nem balão.
+- **Conteúdo do painel:** lição e contador ("Lição 3 de 7 · Pedir ao Nexus", "2 de 6"), título do passo, texto, e quando o passo pede um pedido ao Nexus, o **pedido sugerido** com o botão "Usar este pedido", que só copia o texto para o campo.
+- **Botões:** Voltar, Sair do treinamento e o botão primário, que diz **Próximo**, **Pular** (o passo se confere sozinho e ainda não foi feito), **Concluir lição** ou **Fechar**.
+- **Avanço automático:** o passo que pede uma ação (abrir uma tela, enviar um pedido, confirmar, aprovar) avança sozinho quando a ação acontece. Passos de leitura esperam o Próximo. Pular sempre funciona, porque a IA real pode responder diferente do esperado.
+- Áreas que um passo pode destacar (`Tutorial.Anchor`): um botão do menu, o título da tela, o container de conteúdo, o campo de pedido do Nexus e o usuário no rodapé.
+
+### 10.4 Lições
+
+| Lição | Quem faz | O que a pessoa faz |
+|-------|----------|--------------------|
+| A janela | Todos | Coluna de menus, usuário, título e conteúdo |
+| Consultar | Quem tem `stock.read` | Estoque com filtro, Endereços e Pedidos |
+| Pedir ao Nexus | Quem tem `plan.submit` | Envia um pedido, confere a proposta e o efeito simulado, confirma e vê o saldo |
+| Perguntar ao Nexus | Quem tem `plan.submit` | Pergunta sobre um procedimento, pedido fora do escopo, limites da IA |
+| Novo plano | Quem tem `plan.submit` | Monta um plano por formulário e vê o histórico em Planos |
+| Operação crítica | Quem tem `plan.submit` | Como João, pede um cancelamento; como Maria, aceita ou rejeita |
+| Skills, Memórias e Receitas | Quem tem `stock.read` | O que cada tela guarda e quem pode alterar |
+| Auditoria e Custos de IA | Quem tem `audit.read` | Eventos, cadeia de hash e consumo de tokens |
+| Configurações | Quem tem `user.manage` | O que o administrador mantém no sistema real |
+
+Os textos são operacionais e diretos, como no resto do app. Todo SKU, endereço e pedido citado existe em `db/seed.sql`.

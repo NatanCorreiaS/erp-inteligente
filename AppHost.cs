@@ -17,6 +17,7 @@ using erp_inteligente.Core.Security;
 using erp_inteligente.Core.Skills;
 using erp_inteligente.Services;
 using erp_inteligente.Services.Sqlite;
+using erp_inteligente.Training;
 using erp_inteligente.ViewModels;
 
 namespace erp_inteligente;
@@ -162,8 +163,16 @@ public sealed class AppHost : IDisposable
         return AuditStatus = AuditVerifier.Verify(connection);
     }
 
+    /// <summary>Audit events and token accounting of the guided training (references/UI.md, section 10).</summary>
+    public TrainingLog TrainingLog => new(Database, AuditLog, UsageLog);
+
     /// <summary>Builds the main window view model for the session that has just started.</summary>
-    public ShellViewModel CreateShell(IDialogService dialogs) =>
+    /// <param name="training">Opens the guided training; null hides the menu item.</param>
+    /// <param name="sandbox">
+    /// True for the shell of a training sandbox: Configurações does not edit the provider settings (the sandbox calls
+    /// the provider with the real configuration) and leaving is labelled as leaving the training.
+    /// </param>
+    public ShellViewModel CreateShell(IDialogService dialogs, ITrainingService? training = null, bool sandbox = false) =>
         new(Session,
             new SqliteQueryService(ApplicationDb, Session),
             new EnginePlanService(Engine, ApplicationDb, Session),
@@ -172,11 +181,13 @@ public sealed class AppHost : IDisposable
             Time,
             AuditStatus,
             $"{Database.Path} (criptografado com SQLCipher)",
-            LlmSettingsService,
+            sandbox ? null : LlmSettingsService,
             new SqliteSkillService(SkillStore, Session),
             new SqliteMemoryService(MemoryStore, Session, MemoryMaintenance),
             new SqliteRecipeService(RecipeStore, Session),
-            new SqliteOperationsService(Database, Policy, UsageLog, Backups, Session, Time));
+            new SqliteOperationsService(Database, Policy, UsageLog, Backups, Session, Time),
+            training,
+            sandbox ? "Sair do treinamento" : "Sair");
 
     public void Dispose() => Database.Dispose();
 }

@@ -17,6 +17,9 @@
             <Color x:Key="TextSecondaryColor">#A9AFB7</Color>
             <Color x:Key="TextDisabledColor">#80868E</Color>
 
+            <!-- Dim layer of the training overlay: the background at 60% (references/UI.md, section 10) -->
+            <Color x:Key="ScrimColor">#990E0F11</Color>
+
             <!-- Brand: chrome only, never state or data -->
             <Color x:Key="BrandPrimaryColor">#C8102E</Color>
             <Color x:Key="BrandAccentColor">#E01E3C</Color>
@@ -44,6 +47,7 @@
             <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
             <SolidColorBrush x:Key="TextDisabledBrush" Color="{StaticResource TextDisabledColor}" />
+            <SolidColorBrush x:Key="ScrimBrush" Color="{StaticResource ScrimColor}" />
             <SolidColorBrush x:Key="BrandPrimaryBrush" Color="{StaticResource BrandPrimaryColor}" />
             <SolidColorBrush x:Key="BrandAccentBrush" Color="{StaticResource BrandAccentColor}" />
             <SolidColorBrush x:Key="OnBrandBrush" Color="{StaticResource OnBrandColor}" />

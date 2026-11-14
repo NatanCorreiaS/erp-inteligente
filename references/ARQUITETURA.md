@@ -328,7 +328,7 @@ operacoes: [create_inbound_order, receive_goods, cancel_inbound_order]
   - **Endereço:** fixo no código (`https://api.deepseek.com`), só HTTPS e sem seguir redirecionamentos, para a chave não poder ir a outro host.
   - **Tempo e tentativas:** 60 s por tentativa e até 2 novas tentativas, só para 429 e 5xx.
   - **Raciocínio:** no modo de raciocínio da DeepSeek, o `reasoning_content` de cada resposta é devolvido nas chamadas seguintes, como a API exige quando há ferramentas.
-  - **Modelos:** `deepseek-v4-pro` (padrão) e `deepseek-flash`, escolhidos em Configurações.
+  - **Modelos:** `deepseek-flash` (padrão desde 2026-11-14; é o id da API, servido pelo DeepSeek-V4.1-Flash) e `deepseek-v4-pro`, escolhidos em Configurações.
 - **Modelo por papel:** um modelo barato para identificar receitas e extrair parâmetros, e um modelo forte para planejar e tratar exceções. Ambos são configuráveis.
 - **Estado (feature 8):** a DeepSeek e o modelo local estão implementados (`Core/Llm`), sobre o mesmo cliente de *chat completions* (`ChatCompletionsProvider`).
   - **Cache de prompt:** a DeepSeek faz o cache do prefixo do prompt sozinha; o cliente lê `prompt_cache_hit_tokens` da resposta e o painel de custos cobra essa parte a 10% do preço de entrada.
@@ -338,7 +338,7 @@ operacoes: [create_inbound_order, receive_goods, cancel_inbound_order]
 
 | Papel | Modelo padrão | Alternativas suportadas |
 |-------|---------------|-------------------------|
-| Planner | `deepseek-v4-pro` | `deepseek-flash` |
+| Planner | `deepseek-flash` | `deepseek-v4-pro` |
 | Receitas e extração de parâmetros | `deepseek-flash` | `deepseek-v4-pro` ou o modelo ajustado por fine-tuning (seção 10.1) |
 | Embeddings | Desligados (só BM25) | Modelo de embeddings local (`nexus-embed`) |
 
@@ -507,6 +507,17 @@ Camadas, da mais externa para a mais interna:
 - Chaves de API, chave do SQLCipher e chave de colunas ficam no cofre do sistema operacional.
 - Nenhum segredo vai para o repositório: `.gitignore` bloqueia `.env*`, `*.key`, `*.pem` e arquivos `*.db`.
 - Os dados do repositório são todos fictícios.
+
+### 12.10.1 Ambiente de treinamento (2026-11-14)
+
+O treinamento guiado (`UI.md`, seção 10) roda numa cópia descartável do app (`Training/TrainingSandbox`):
+
+- **Banco próprio:** um SQLCipher novo numa pasta temporária, criado com o schema e o seed fictício. As chaves dele ficam só na memória do processo. A pasta é apagada quando a janela fecha.
+- **Mesmo núcleo:** outro `AppHost` sobre esse banco, com o motor, a política e a auditoria de sempre. Nada do que acontece ali toca o banco real.
+- **IA real, chave no lugar:** o Planner do treinamento usa o adaptador de LLM do sistema real, que lê a chave do cofre do SO a cada chamada. A chave não é copiada para o treinamento, e Configurações de lá não a mostra nem edita.
+- **O que fica no sistema real:** os eventos `training.start`, `training.lesson.complete` e `training.end` na auditoria, e o consumo de tokens em `llm_usage`, no nome de quem treinou (`Training/TrainingLog`). As lições concluídas são lidas desses eventos; não há tabela nova.
+- **Sessão:** só abre de dentro de uma sessão real. O uso da janela de treinamento conta como atividade, e o fim da sessão real (saída ou 15 minutos sem uso) fecha o treinamento.
+- **Personas:** o login no banco de treinamento usa os usuários do seed, com a senha pública do seed. Ela só abre o banco descartável.
 
 ### 12.11 Testes de segurança
 

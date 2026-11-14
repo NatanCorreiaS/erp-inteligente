@@ -68,9 +68,9 @@ public sealed class SettingsViewModelTests : IDisposable
         Assert.False(vm.IsKeyConfigured);
         Assert.Null(_app.Host.LlmSettings.ReadKey());
 
-        vm.SelectedModel = LlmSettings.FastModel;
+        vm.SelectedModel = LlmSettings.StrongModel;
         for (var i = 0; i < 50 && vm.IsWorking; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
-        Assert.Equal(LlmSettings.FastModel, _app.Host.LlmSettings.Model);
+        Assert.Equal(LlmSettings.StrongModel, _app.Host.LlmSettings.Model);
         Assert.Equal(1, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'llm.key.clear'"));
         Assert.Equal(1, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'llm.model.set'"));
     }
@@ -102,9 +102,9 @@ public sealed class SettingsViewModelTests : IDisposable
         Assert.Equal(1, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'llm.key.set' AND target = 'llm:deepseek'"));
 
         Assert.Equal(LlmSettings.ModelsFor(LlmProviderKind.DeepSeek), vm.PlannerModels);
-        vm.PlannerModel = LlmSettings.FastModel;
+        vm.PlannerModel = LlmSettings.StrongModel;
         for (var i = 0; i < 50 && vm.IsWorking; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
-        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner));
+        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel), _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner));
         Assert.Contains("usada em planejamento", vm.ProviderRows.Single(r => r.Name == "DeepSeek").StatusText);
 
         vm.MatcherProvider = vm.MatcherProviders.Single(p => p.Kind == LlmProviderKind.Local);
@@ -126,14 +126,14 @@ public sealed class SettingsViewModelTests : IDisposable
     public async Task Other_roles_cannot_change_the_model_of_a_role()
     {
         var vm = await SettingsFor("sup.maria");
-        vm.PlannerModel = LlmSettings.FastModel;
+        vm.PlannerModel = LlmSettings.StrongModel;
         vm.MatcherProvider = vm.MatcherProviders.Single(p => p.Kind == LlmProviderKind.Local);
         await Task.Delay(50, TestContext.Current.CancellationToken);
-        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel), _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner));
+        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner));
         Assert.Equal(LlmProviderKind.DeepSeek, _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Matcher).Provider);
         var maria = await _app.LoginAsync("sup.maria");
         Assert.Throws<PolicyDeniedException>(() => _app.Host.LlmSettingsService.SetChoice(maria, LlmUseRole.Planner,
-            new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel)));
+            new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel)));
     }
 
     [Fact]

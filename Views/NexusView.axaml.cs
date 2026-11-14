@@ -2,6 +2,7 @@ using System;
 using System.Collections.Specialized;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using erp_inteligente.ViewModels;
 
@@ -14,6 +15,8 @@ public partial class NexusView : UserControl
     public NexusView()
     {
         InitializeComponent();
+        // Tunnel: the TextBox itself handles Enter (AcceptsReturn) before a bubbling handler would see it.
+        RequestBox.AddHandler(KeyDownEvent, OnRequestKeyDown, RoutingStrategies.Tunnel);
     }
 
     protected override void OnDataContextChanged(EventArgs e)

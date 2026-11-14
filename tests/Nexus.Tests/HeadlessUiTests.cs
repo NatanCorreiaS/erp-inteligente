@@ -1,5 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
+using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -33,6 +36,86 @@ public class HeadlessUiTests
             Assert.Contains(window.GetVisualDescendants(), v => v.GetType().Name == expected);
             Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.StartsWith("Not Found") == true);
         }
+        window.Close();
+    }
+
+    /// <summary>Enter in the request field sends the request; Shift+Enter breaks the line.</summary>
+    [AvaloniaFact]
+    public async Task Enter_in_the_request_field_sends_the_request_and_shift_enter_breaks_the_line()
+    {
+        var llm = new ScriptedLlmProvider().Reply("Resposta do teste.");
+        using var app = new TestApp(llm: llm);
+        var shell = await app.ShellForAsync("op.joao");
+        var window = new MainWindow { DataContext = shell };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var nexus = Assert.IsType<NexusViewModel>(shell.CurrentPage);
+        var box = window.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "RequestBox");
+        box.Focus();
+
+        window.KeyTextInput("saldo do ABC-123");
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.Shift);
+        window.KeyTextInput("no A-01-01");
+        Dispatcher.UIThread.RunJobs();
+        Assert.Empty(nexus.Entries);
+        Assert.Equal(2, nexus.Draft.Split('\n').Length);
+
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (nexus.Entries.Count < 2 && DateTime.UtcNow < deadline)
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal("", nexus.Draft);
+        Assert.Equal(2, nexus.Entries.Count);
+        Assert.StartsWith("saldo do ABC-123", Assert.IsType<TextBodyViewModel>(nexus.Entries[0].Body).Text);
+        Assert.Equal("Resposta do teste.", Assert.IsType<TextBodyViewModel>(nexus.Entries[1].Body).Text);
+
+        // Enter on an empty field sends nothing.
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(2, nexus.Entries.Count);
+        Assert.Equal("", nexus.Draft);
+        window.Close();
+    }
+
+    /// <summary>At the minimum height the supervisor's menu does not fit: it scrolls, with the bar shown, and the footer stays.</summary>
+    [AvaloniaFact]
+    public async Task Menu_column_scrolls_when_the_buttons_do_not_fit_the_height()
+    {
+        using var app = new TestApp();
+        var shell = await app.ShellForAsync("sup.maria");
+        var window = new MainWindow { DataContext = shell, Height = 680 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Single(s => s.Name == "MenuScroll");
+        Assert.True(scroll.Extent.Height > scroll.Viewport.Height, "the menu should overflow at 680 px");
+        Assert.False(scroll.AllowAutoHide);
+        var bar = scroll.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ScrollBar>().Single(b => b.Orientation == Avalonia.Layout.Orientation.Vertical);
+        Assert.True(bar.IsEffectivelyVisible);
+
+        var buttons = scroll.GetVisualDescendants().OfType<RadioButton>().ToList();
+        Assert.Equal(shell.MenuItems.Count, buttons.Count);
+        var last = buttons[^1];
+        bool Inside(Control c) => c.TranslatePoint(new Avalonia.Point(0, c.Bounds.Height), scroll) is { } p && p.Y <= scroll.Bounds.Height + 0.5;
+        Assert.False(Inside(last));
+        scroll.ScrollToEnd();
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(Inside(last));
+
+        // The footer is outside the scrolling area and fully inside the window.
+        var signOut = window.GetVisualDescendants().OfType<Button>().Single(b => b.Command == shell.SignOutCommand);
+        Assert.DoesNotContain(signOut, scroll.GetVisualDescendants().OfType<Button>());
+        Assert.True(signOut.TranslatePoint(new Avalonia.Point(0, signOut.Bounds.Height), window)!.Value.Y <= window.ClientSize.Height);
+
+        // On a tall window everything fits and there is no bar.
+        window.Height = 1100;
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(scroll.Extent.Height <= scroll.Viewport.Height);
+        Assert.False(bar.IsEffectivelyVisible);
         window.Close();
     }
 

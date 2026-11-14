@@ -23,7 +23,7 @@ flowchart TB
 
         subgraph AI["Camada de IA"]
             RM["Recipe Matcher<br/>deepseek-flash ou modelo ajustado"]
-            PL["Planner · deepseek-v4-pro<br/>skills · memórias filtradas 🔒"]
+            PL["Planner · deepseek-flash<br/>skills · memórias filtradas 🔒"]
             ROCONN["🔒 Ferramentas de leitura<br/>conexão read-only + authorizer<br/>só views v_ai_*"]
         end
 
@@ -41,7 +41,7 @@ flowchart TB
     end
 
     subgraph EXT["Provedor externo · HTTPS · sem dados sensíveis"]
-        DS["DeepSeek API<br/>deepseek-v4-pro · deepseek-flash"]
+        DS["DeepSeek API<br/>deepseek-flash · deepseek-v4-pro opcional"]
     end
 
     subgraph FT["Fine-tuning · offline"]

@@ -20,11 +20,14 @@ public sealed partial class ShellViewModel : ViewModelBase
 
     /// <param name="auditStatus">Result of the hash-chain verification; a break is shown to users with <c>audit.read</c>.</param>
     /// <param name="databaseDescription">Where the encrypted database lives, shown in Configurações.</param>
+    /// <param name="training">Opens the guided training; null hides the Treinamento item (tests, and the sandbox itself).</param>
+    /// <param name="signOutLabel">Text of the button that leaves; the sandbox shell says "Sair do treinamento".</param>
     public ShellViewModel(ISessionService session, IQueryService queries, IPlanService plans, INexusService nexus,
         IDialogService dialogs, TimeProvider time, AuditVerification auditStatus, string databaseDescription,
         LlmSettingsService? llm = null, ISkillService? skills = null, IMemoryService? memories = null, IRecipeService? recipes = null,
-        IOperationsService? operations = null)
+        IOperationsService? operations = null, ITrainingService? training = null, string signOutLabel = "Sair")
     {
+        SignOutLabel = signOutLabel;
         _user = session.Current;
         _plans = plans;
         AuditAlert = !auditStatus.IsValid && _user.Has(Permissions.AuditRead)
@@ -50,8 +53,13 @@ public sealed partial class ShellViewModel : ViewModelBase
             new("Custos de IA", "Costs", () => new CostsViewModel(operations!), operations is null ? NoSuchPermission : Permissions.AuditRead),
         ];
         MenuItems = new ObservableCollection<NavigationItem>(menu.Where(IsAllowed));
-        FooterItems = new ObservableCollection<NavigationItem>(
-            new NavigationItem[] { new("Configurações", "Settings", () => new SettingsViewModel(_user, databaseDescription, llm, operations)) }.Where(IsAllowed));
+        NavigationItem[] footer =
+        [
+            // Open to every role: each one trains with the lessons of its own role (references/UI.md, section 10).
+            new("Treinamento", "Training", () => new TrainingViewModel(_user, training!), training is null ? [NoSuchPermission] : Array.Empty<string>()),
+            new("Configurações", "Settings", () => new SettingsViewModel(_user, databaseDescription, llm, operations)),
+        ];
+        FooterItems = new ObservableCollection<NavigationItem>(footer.Where(IsAllowed));
 
         _plansItem = MenuItems.FirstOrDefault(i => i.IconKey == "Plans");
         WeakReferenceMessenger.Default.Register<ShellViewModel, OpenPlanMessage>(this, static (shell, message) => _ = shell.OpenPlanAsync(message));
@@ -68,6 +76,11 @@ public sealed partial class ShellViewModel : ViewModelBase
 
     public ObservableCollection<NavigationItem> MenuItems { get; }
     public ObservableCollection<NavigationItem> FooterItems { get; }
+
+    /// <summary>The plan service of this session; the training watches it to notice executed and approved plans.</summary>
+    internal IPlanService Plans => _plans;
+
+    public string SignOutLabel { get; }
 
     public string UserName => _user.DisplayName;
     public string UserDetail => $"{Capitalize(_user.RoleName)} · {_user.WarehouseCode}";

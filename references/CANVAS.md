@@ -6,7 +6,7 @@
 | **Entrada** | Pedido em linguagem natural (texto no app desktop); dados do armazém no SQLite; procedimentos em Markdown (RAG); skills (`SKILL.md` com frontmatter, carregadas sob demanda). |
 | **Saída** | Plano JSON validado e simulado; movimentação de estoque gravada em transação; resposta em linguagem simples; pedido de confirmação para operações críticas; registro na auditoria; novas memórias e receitas. |
 | **Maior risco** | A IA executar uma alteração errada ou não autorizada no estoque, por alucinação ou prompt injection. **Mitigação:** a IA não escreve no banco; só envia planos que o código valida, simula e executa em transação. Os direitos da IA são a interseção com os do usuário, operações críticas exigem um supervisor, e a conexão da IA é somente leitura. |
-| **MVP em 3 semanas** | **Semana 1:** schema, segurança e carga no SQLite (pronto em `db/`); projeto Avalonia com login e tela de chat. **Semana 2:** motor de planos (Validator, Simulator, Executor) com `receive_goods` e `move_stock`; ferramentas de leitura; Planner com `deepseek-v4-pro`; skills `recebimento` e `armazenagem`. **Semana 3:** RAG sobre `knowledge/` (FTS5 + `sqlite-vec`), aprovação de plano crítico, auditoria encadeada, suíte de ataques de prompt injection. **Fica fora do MVP:** receitas automáticas, fine-tuning, inventário e expedição. |
+| **MVP em 3 semanas** | **Semana 1:** schema, segurança e carga no SQLite (pronto em `db/`); projeto Avalonia com login e tela de chat. **Semana 2:** motor de planos (Validator, Simulator, Executor) com `receive_goods` e `move_stock`; ferramentas de leitura; Planner com `deepseek-flash`; skills `recebimento` e `armazenagem`. **Semana 3:** RAG sobre `knowledge/` (FTS5 + `sqlite-vec`), aprovação de plano crítico, auditoria encadeada, suíte de ataques de prompt injection. **Fica fora do MVP:** receitas automáticas, fine-tuning, inventário e expedição. |
 
 ## Arquitetura em caixas
 
@@ -17,8 +17,8 @@
           │ pedido em português
 ┌─────────▼──────────┐      ┌──────────────────────────┐
 │ App desktop        │      │ LLM (DeepSeek:           │
-│ Avalonia: chat,    │◄────►│ deepseek-v4-pro e        │
-│ prévia, aprovação  │      │ deepseek-flash)          │
+│ Avalonia: chat,    │◄────►│ deepseek-flash;          │
+│ prévia, aprovação  │      │ deepseek-v4-pro opcional)│
 └─────────┬──────────┘      └────────────▲─────────────┘
           │                              │ contexto sem dados sensíveis
 ┌─────────▼──────────────────────────────┴─────────────┐

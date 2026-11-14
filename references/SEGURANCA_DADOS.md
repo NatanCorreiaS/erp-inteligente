@@ -144,6 +144,19 @@ Risco residual: um fato operacional errado, mas inofensivo na forma, passa no fi
 
 Risco residual: o detector é por regras. Um texto hostil bem disfarçado passa sem aviso. Nesse caso valem as camadas seguintes (seção 12.8 da arquitetura): o motor valida todo plano, quem pediu confirma e um supervisor aprova os críticos.
 
+### 3.4.1 Ambiente de treinamento (2026-11-14)
+
+O treinamento guiado deixa um recém-chegado usar o sistema inteiro, inclusive a IA, sem risco para os dados:
+
+1. **Dados separados:** o treinamento roda sobre um banco SQLCipher novo, numa pasta temporária, com o seed fictício. As chaves ficam só na memória e a pasta é apagada no fim.
+2. **Mesmas regras:** é o mesmo núcleo, então papéis, `DENY`, aprovação por outro supervisor e auditoria valem lá dentro também. O recém-chegado aprende as regras reais.
+3. **Chave do provedor:** as chamadas à IA usam a chave do cofre do sistema real, lida a cada chamada. Ela não é copiada para o treinamento nem aparece em Configurações de lá.
+4. **O que vai para a IA:** só dados fictícios do seed e o que a pessoa digitar no treinamento.
+5. **Rastro e custo:** início, lições concluídas e fim ficam na auditoria real, e os tokens consumidos entram em `llm_usage` no nome de quem treinou.
+6. **Sessão:** o treinamento fecha quando a sessão real termina.
+
+Risco residual: o treinamento gasta tokens de verdade. Cada passo com IA avisa disso, e o gasto aparece em Custos de IA.
+
 ### 3.5 Receitas: planos reutilizáveis (feature 7)
 
 Uma receita deixa repetir um plano sem planejamento. O risco é uma receita errada ou maliciosa virar um atalho. Controles:
@@ -268,8 +281,9 @@ dotnet test tests/Nexus.Tests --filter "FullyQualifiedName~PromptInjectionSuite"
 | Receitas: IA ou operador promovendo, descrição com instrução, parâmetro com SQL ou campo extra, receita fora das oferecidas pelo Matcher, pedido suspeito usando o atalho, apagar ou alterar o modelo | `RecipeStoreTests`, `RecipeTemplateTests`, `RecipeGroundingTests`, `RecipeMatcherTests` e `RecipesViewModelTests` (C#); `RecipeTests` e `MigrationTo7Tests` (Python) | Automatizado ✅ |
 | Memória contrariada e erros recorrentes: confiança que cai com a rejeição e sai do contexto, memória de erro com texto do modelo, memória repetida por código | `MemoryFeedbackTests` e `MemoryContextTests` (C#) | Automatizado ✅ |
 | Embeddings: CPF ou e-mail na pergunta enviada ao provedor, envio para host que não seja `127.0.0.1`, leitura dos vetores pela IA, `load_extension()` liberado depois do `sqlite-vec`, vetor com tamanho errado, troca de provedor por quem não é administrador, falha do provedor quebrando o pedido | `EmbeddingsClientTests`, `HybridSearchTests`, `EmbeddingSettingsTests`, `MemoryContextTests` e `MigrationTests` (C#); `KnowledgeEmbeddingTests` e `MigrationTo9Tests` (Python) | Automatizado ✅ |
+| Treinamento: plano executado no treinamento aparecendo no banco real, chave do provedor copiada para o treinamento, pasta temporária sobrando, persona que não é do seed (inclusive o agente de IA e SQL no nome), treinamento aberto depois do fim da sessão real, clique fora da área destacada, consumo de tokens sem dono | `TrainingSandboxTests`, `TutorialRunnerTests` e `TrainingUiTests` (C#) | Automatizado ✅ |
 
 ```bash
 python3 -m unittest discover -s db/tests -v   # 115 testes
-dotnet test tests/Nexus.Tests                 # 1425 testes do app
+dotnet test tests/Nexus.Tests                 # 1445 testes do app
 ```

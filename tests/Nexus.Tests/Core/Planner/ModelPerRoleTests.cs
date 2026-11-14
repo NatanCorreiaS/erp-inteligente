@@ -58,7 +58,7 @@ public sealed class ModelPerRoleTests : IDisposable
         _llm.Enqueue(Text("{\"receita\": null}")).Enqueue(Text("ok"));
         await Run(Request);
         Assert.Equal((LlmProviderKind.DeepSeek, LlmSettings.FastModel), (_llm.Requests[0].Provider, _llm.Requests[0].Model));
-        Assert.Equal((LlmProviderKind.DeepSeek, LlmSettings.StrongModel), (_llm.Requests[1].Provider, _llm.Requests[1].Model));
+        Assert.Equal((LlmProviderKind.DeepSeek, LlmSettings.FastModel), (_llm.Requests[1].Provider, _llm.Requests[1].Model));
     }
 
     [Fact]
