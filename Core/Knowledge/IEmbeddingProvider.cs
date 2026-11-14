@@ -13,7 +13,7 @@ public sealed record EmbeddingBatch(IReadOnlyList<float[]> Vectors, int Tokens);
 /// </summary>
 public interface IEmbeddingProvider
 {
-    /// <summary>"openai:text-embedding-3-small", "local:nexus-embed"...; null when embeddings are off (search stays BM25).</summary>
+    /// <summary>"local:nexus-embed"; null when embeddings are off (search stays BM25).</summary>
     string? Model { get; }
 
     /// <summary>

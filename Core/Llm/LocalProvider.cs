@@ -6,33 +6,7 @@ using System.Threading.Tasks;
 namespace erp_inteligente.Core.Llm;
 
 /// <summary>
-/// OpenAI chat-completions client (non-streaming, feature 8). Fixed host, no redirects, key from the OS key store on
-/// every call. Current models take <c>max_completion_tokens</c> instead of <c>max_tokens</c>.
-/// </summary>
-public sealed class OpenAiProvider : ChatCompletionsProvider
-{
-    private static readonly Uri Url = new("https://api.openai.com/v1/chat/completions");
-
-    public OpenAiProvider(HttpMessageHandler handler, Func<byte[]?> keySource,
-        Func<TimeSpan, CancellationToken, Task>? delay = null, TimeSpan? timeout = null)
-        : base(handler, keySource ?? throw new ArgumentNullException(nameof(keySource)), delay, timeout)
-    {
-    }
-
-    protected override Uri Endpoint => Url;
-
-    protected override string MaxTokensField => "max_completion_tokens";
-
-    /// <summary>Minimal call to the cheapest offered model; throws <see cref="LlmException"/> when the key or service is unusable.</summary>
-    public async Task TestConnectionAsync(CancellationToken cancellationToken)
-    {
-        var probe = new LlmRequest(LlmSettings.OpenAiFastModel, [LlmMessage.User("ping")], [], 16);
-        await SendAsync(BuildBody(probe, null), cancellationToken).ConfigureAwait(false);
-    }
-}
-
-/// <summary>
-/// The fine-tuned Matcher served on this machine by an OpenAI-compatible server (llama.cpp, vLLM, Ollama...), feature 8.
+/// The fine-tuned Matcher served on this machine by a chat-completions server (llama.cpp, vLLM, Ollama...), feature 8.
 /// Only loopback is accepted (<c>http://127.0.0.1:port</c>), so nothing leaves the machine; there is no key.
 /// </summary>
 public sealed class LocalProvider : ChatCompletionsProvider

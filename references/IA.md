@@ -6,22 +6,22 @@
 
 | Papel | Modelo | Por quê |
 |-------|--------|---------|
-| Planner (planeja e trata exceções) | **Claude Sonnet 5.5** | Boa qualidade em tool calling com muitas etapas; suporta *strict tool use* (argumentos sempre válidos pelo schema) e controle de esforço. Custa metade do Opus 5.5 por token. |
-| Receitas e extração de parâmetros | **Claude Haiku 5.5**, depois o modelo do fine-tuning | Tarefa curta e repetitiva; é o modelo mais barato entre os avaliados. |
-| Embeddings do RAG | **OpenAI `text-embedding-3-small`** | Anthropic e DeepSeek não oferecem embeddings; custo desprezível. Pode ser trocado por um modelo local. |
+| Planner (planeja e trata exceções) | **`deepseek-v4-pro`** | Boa qualidade em tool calling com muitas etapas, com raciocínio (*thinking*) devolvido no laço de ferramentas. |
+| Receitas e extração de parâmetros | **`deepseek-flash`**, depois o modelo do fine-tuning | Tarefa curta e repetitiva; é o modelo mais barato do provedor. |
+| Embeddings do RAG | **Modelo local `nexus-embed`** (`paraphrase-multilingual-MiniLM-L12-v2`) | A DeepSeek não oferece embeddings. O modelo local roda em `127.0.0.1`, sem custo e sem envio de dados. |
 
-DeepSeek e OpenAI continuam suportados pela interface `ILlmProvider` e podem ser escolhidos na configuração.
+O único provedor externo é a **DeepSeek** (decisão de 2026-11-14). A interface `ILlmProvider` continua separando o app do provedor.
 
-**Estado da implementação (feature 3):** o primeiro adaptador implementado é o da **DeepSeek**.
-- **Modelos:** `deepseek-v4-pro` no Planner por padrão, ou `deepseek-flash`, escolhidos em Configurações. Claude e OpenAI entraram na feature 8 (abaixo).
+**Estado da implementação (feature 3):** o adaptador implementado é o da **DeepSeek**.
+- **Modelos:** `deepseek-v4-pro` no Planner por padrão, ou `deepseek-flash`, escolhidos em Configurações.
 - **Chave:** digitada pelo administrador e guardada no cofre do SO.
 - **Limites por pedido:** 4 planos inválidos, 12 rodadas, 3 propostas válidas, 8.192 tokens por chamada e 60.000 por pedido. Passou do limite, a tarefa é escalada ao operador, salvo quando já há propostas válidas: essas são entregues. É a defesa contra "custo descontrolado" da seção 5.
 - **Direitos:** a IA tem os direitos operacionais do usuário que pede (decisão de 2026-11-08). Ver [`SEGURANCA_DADOS.md`](SEGURANCA_DADOS.md), seção 3.1.
 - **Recipe Matcher (feature 7):** uma chamada sem ferramentas, de até 600 tokens de resposta. Um filtro sem LLM evita a chamada quando o pedido não tem valor nem palavra em comum com uma receita ativa.
-- **Multi-provedor (feature 8):** Claude (pelo SDK oficial `Anthropic`), OpenAI e um modelo local estão implementados. O administrador escolhe provedor e modelo de cada papel em Configurações:
-  - Planejamento: `deepseek-v4-pro` ou `deepseek-flash`; `claude-sonnet-5-5`, `claude-opus-5-5` ou `claude-haiku-5-5`; `gpt-5` ou `gpt-5-mini`.
+- **Modelo por papel (feature 8):** o administrador escolhe o modelo de cada papel em Configurações:
+  - Planejamento: `deepseek-v4-pro` ou `deepseek-flash`.
   - Matcher: os mesmos, mais o modelo local ajustado (`nexus-matcher`).
-  - O padrão continua `deepseek-v4-pro` no planejamento e `deepseek-flash` no Matcher, para não mudar o custo de quem já usa o app. Para seguir a tabela acima, escolha Claude Sonnet 5.5 e Claude Haiku 5.5.
+  - O padrão é `deepseek-v4-pro` no planejamento e `deepseek-flash` no Matcher.
 
 **Privacidade:** o que sai da máquina é sempre não sensível (views `v_ai_*`, procedimentos fictícios e memórias filtradas). Por isso a escolha do provedor afeta custo e qualidade, mas não expõe CPF, contatos ou custos. Quem quiser zero envio de dados pode usar o modelo do fine-tuning e embeddings locais para receitas e RAG; o Planner ainda depende de um provedor.
 
@@ -33,12 +33,9 @@ Consultados em 27/10/2026, por 1 milhão de tokens:
 
 | Modelo | Entrada | Saída | Fonte |
 |--------|--------:|------:|-------|
-| Claude Opus 5.5 | US$ 4,00 | US$ 20,00 | Tabela de modelos da Anthropic |
-| Claude Sonnet 5.5 | US$ 2,00 | US$ 10,00 | Tabela de modelos da Anthropic |
-| Claude Haiku 5.5 | US$ 0,10 | US$ 0,50 | Tabela de modelos da Anthropic (prompts até 100 mil tokens) |
 | `deepseek-v4-pro` | ¥ 9,00 | ¥ 27,00 | api-docs.deepseek.com, preço de pico, sem cache |
 | `deepseek-flash` | ¥ 2,00 | ¥ 8,00 | api-docs.deepseek.com, preço de pico, sem cache |
-| `text-embedding-3-small` | US$ 0,02 | — | developers.openai.com |
+| `nexus-embed` e `nexus-matcher` (locais) | 0 | 0 | Rodam na máquina do usuário |
 
 A DeepSeek publica preços só em yuan (¥). Fora do horário de pico de Pequim, o preço cai pela metade.
 
@@ -48,33 +45,31 @@ A DeepSeek publica preços só em yuan (¥). Fora do horário de pico de Pequim,
 |---------|---------:|------------------:|----------------:|
 | Planejamento completo | ~3 (consultas, `propose_plan`, texto final) | 12.000 (acumulado) | 2.000 (inclui raciocínio) |
 | Receita | 1 | 1.500 | 150 |
-| Embedding da pergunta | 1 | 40 | — |
+| Embedding da pergunta (modelo local) | 1 | 40 | — |
 
 No início, 70% dos pedidos passam pelo planejamento e 30% por receitas. Com o uso, a meta é chegar a 40% e 60%.
 
-**Medição real (feature 9):** cada pedido grava seus tokens em `llm_usage`, e a tela Custos de IA mostra o custo estimado com os preços acima (Anthropic em US$, DeepSeek em ¥ no pico; modelos sem preço aqui, como os da OpenAI, aparecem só com os tokens). É a fonte para refazer esta conta com números medidos.
+**Medição real (feature 9):** cada pedido grava seus tokens em `llm_usage`, e a tela Custos de IA mostra o custo estimado com os preços acima (DeepSeek em ¥ no pico; um modelo sem preço aqui aparece só com os tokens). É a fonte para refazer esta conta com números medidos.
 
-**Premissas em revisão:** o modo proativo (2026-11-08) pode fazer mais consultas por pedido e até 3 propostas. As premissas de 12.000 tokens de entrada e de 3 chamadas não foram medidas com esse modo. Refazer a conta com a medição do conjunto de avaliação (seção 5) antes de citar um custo real.
+**Premissas em revisão:** o modo proativo (2026-11-08) pode fazer mais consultas por pedido e até 3 propostas. A medição de 2026-11-14 (seção 5) deu 34.377 tokens por pedido de planejamento, contra os 14.000 das premissas acima. A conta abaixo ainda usa as premissas: refazê-la com a divisão entre entrada, cache e saída da tela Custos de IA antes de citar um custo real.
 
 ### Resultado
 
 | Configuração | 70% planejamento | 40% planejamento |
 |--------------|-----------------:|-----------------:|
-| **Sonnet 5.5 + Haiku 5.5 (padrão)** | **≈ US$ 30,90** | **≈ US$ 17,75** |
-| Opus 5.5 + Haiku 5.5 | ≈ US$ 61,70 | ≈ US$ 35,30 |
-| Haiku 5.5 em tudo | ≈ US$ 1,60 | ≈ US$ 1,02 |
-| `deepseek-v4-pro` + `deepseek-flash` (pico) | ≈ ¥ 114,70 | ≈ ¥ 67,30 |
-| Sonnet 5.5 sem receitas (100% planejamento) | ≈ US$ 44,00 | — |
+| **`deepseek-v4-pro` + `deepseek-flash` (padrão, pico)** | **≈ ¥ 114,70** | **≈ ¥ 67,30** |
+| `deepseek-flash` em tudo (pico) | ≈ ¥ 29,30 | ≈ ¥ 18,50 |
+| `deepseek-v4-pro` sem receitas (100% planejamento, pico) | ≈ ¥ 162,00 | — |
 
 **Contas do padrão (70/30):**
-- 700 × (12.000 × 2 + 2.000 × 10) / 1.000.000 = US$ 30,80
-- 300 × (1.500 × 0,10 + 150 × 0,50) / 1.000.000 = US$ 0,07
-- Embeddings: US$ 0,0008
+- 700 × (12.000 × 9 + 2.000 × 27) / 1.000.000 = ¥ 113,40
+- 300 × (1.500 × 2 + 150 × 8) / 1.000.000 = ¥ 1,26
+- Embeddings: sem custo (modelo local)
 
 **Leituras:**
-- As **receitas** são o que mais reduz o custo: sair de 70% para 40% de planejamento corta ~43% do gasto.
-- O **cache de prompt** (prompt de sistema + definições de ferramentas, que se repetem em todo pedido) não entrou na conta e reduz ainda mais o custo de entrada. **Estado (2026-11-11):** o adaptador do Claude marca um ponto de cache no prompt de sistema (que cobre as ferramentas, que vêm antes) e ativa o cache automático da conversa, então cada rodada do laço de ferramentas relê as anteriores do cache (leitura a 10% do preço de entrada). Os tokens lidos e gravados no cache voltam em `LlmUsage` e ficam em `llm_usage` (migração 010); o painel de custos cobra a leitura a 10% e a gravação a 125% do preço de entrada.
-- Haiku em tudo é ~20× mais barato, mas fica como opção configurável: o Planner é onde erros custam mais.
+- As **receitas** são o que mais reduz o custo: sair de 70% para 40% de planejamento corta ~41% do gasto.
+- O **cache de prompt** (prompt de sistema + definições de ferramentas, que se repetem em todo pedido) não entrou na conta e reduz ainda mais o custo de entrada. **Estado (2026-11-14):** a DeepSeek faz o cache do prefixo do prompt sozinha e informa quantos tokens leu dele (`prompt_cache_hit_tokens`), então cada rodada do laço de ferramentas relê as anteriores do cache. Esses tokens voltam em `LlmUsage` e ficam em `llm_usage` (migração 010); o painel de custos cobra a leitura do cache a 10% do preço de entrada. A DeepSeek não cobra a gravação no cache, então a coluna de tokens gravados fica em zero.
+- `deepseek-flash` em tudo é ~4× mais barato, mas fica como opção configurável: o Planner é onde erros custam mais.
 
 ## 2.1 Skills sob demanda (feature 4)
 
@@ -95,9 +90,9 @@ No início, 70% dos pedidos passam pelo planejamento e 30% por receitas. Com o u
 | Estado | Feature 5: BM25 em 2026-11-08; **busca híbrida em 2026-11-11** (BM25 + cosseno, RRF). Os embeddings são opcionais e ficam desligados até o administrador escolher o provedor em Configurações |
 | Fontes | `knowledge/*.md` (22 documentos fictícios, embutidos e indexados na abertura). As skills não entram: são carregadas sob demanda por `load_skill` |
 | Chunking | Um trecho por seção `##`, prefixado com título do documento e da seção; seções acima de ~500 tokens divididas com ~50 tokens de sobreposição |
-| Embeddings | `text-embedding-3-small` (OpenAI, 1.536 dimensões) ou o modelo local `nexus-embed` (`paraphrase-multilingual-MiniLM-L12-v2`, 384 dimensões, em `127.0.0.1`, sem custo e sem envio de dados) |
+| Embeddings | Modelo local `nexus-embed` (`paraphrase-multilingual-MiniLM-L12-v2`, 384 dimensões, em `127.0.0.1`, sem custo e sem envio de dados) |
 | Banco vetorial | `knowledge_embeddings` no mesmo arquivo SQLite (float32, um vetor por trecho), com a distância calculada pelo `sqlite-vec` |
-| Busca | Híbrida: top-20 FTS5/BM25 + top-20 por cosseno, fundidos por Reciprocal Rank Fusion. Até 2 trechos no contexto automático e até 5 em `search_knowledge`. Similaridade mínima para um trecho achado só pelo significado: 0,30 (busca) e 0,50 (contexto) na OpenAI; 0,40 e 0,55 no modelo local |
+| Busca | Híbrida: top-20 FTS5/BM25 + top-20 por cosseno, fundidos por Reciprocal Rank Fusion. Até 2 trechos no contexto automático e até 5 em `search_knowledge`. Similaridade mínima para um trecho achado só pelo significado: 0,40 (busca) e 0,55 (contexto) |
 | Uso no prompt | Trechos delimitados como dados de referência, com a origem (`POP-03`, `POL-17`...) para citação |
 
 ### Base de documentos inicial
@@ -112,8 +107,8 @@ No início, 70% dos pedidos passam pelo planejamento e 30% por receitas. Com o u
 | Dados | ~500 pedidos fictícios gerados a partir das receitas e do catálogo de teste (variações de escrita, abreviações, erros de digitação, 15% fora do escopo); anotados e revisados pelo grupo; 400 treino / 100 teste |
 | Modelo base | Modelo aberto pequeno com LoRA (classe 1–3 B parâmetros, ex.: Qwen2.5-1.5B-Instruct), rodando local |
 | Métricas | *Exact match* do JSON; F1 por campo; % de JSON válido; acerto em "nenhuma receita" |
-| Linha de base | Claude Haiku 5.5 com *few-shot* no mesmo conjunto de teste |
-| Critério de adoção | Substitui o Haiku se empatar ou superar no *exact match* e tiver ≥ 99% de JSON válido |
+| Linha de base | `deepseek-flash` com *few-shot* no mesmo conjunto de teste |
+| Critério de adoção | Substitui o `deepseek-flash` se empatar ou superar no *exact match* e tiver ≥ 99% de JSON válido |
 | Ferramentas (feature 8) | `tools/finetune`, ver o `README.md` de lá. O gerador, o conjunto escrito à mão e a avaliação estão testados (`tools/tests/test_finetune.py`) |
 
 Exemplo de par de treino:
@@ -138,16 +133,16 @@ Exemplo de par de treino:
   - "baixa 3 LIM-200 no A-01-02 por avaria", sem motivo: o modelo usou "Avaria" como motivo;
   - um recebimento com lote, que a receita sem lote ignora.
   - Nos dois casos, o resultado continua sendo uma proposta que quem pediu confirma.
-- Latência: cerca de 6 s por pedido nessa GPU (transformers em fp16, sem quantização). Uma chamada ao Haiku costuma levar 1 a 2 s.
-- **Pendente (depende da chave da Anthropic):** a linha de base com o Haiku e a decisão de adoção.
+- Latência: cerca de 6 s por pedido nessa GPU (transformers em fp16, sem quantização).
+- **Pendente (depende da chave da DeepSeek):** a linha de base com o `deepseek-flash` e a decisão de adoção.
 
 ```bash
-ANTHROPIC_API_KEY=... python tools/finetune/predict_claude.py --data tools/finetune/data --out tools/finetune/data/pred_haiku.jsonl
-ANTHROPIC_API_KEY=... python tools/finetune/predict_claude.py --data tools/finetune/data --split holdout --out tools/finetune/data/pred_haiku_holdout.jsonl
-python tools/finetune/evaluate.py --gold tools/finetune/data/holdout.jsonl --pred tools/finetune/data/pred_local_holdout.jsonl --baseline tools/finetune/data/pred_haiku_holdout.jsonl --guard
+DEEPSEEK_API_KEY=... python tools/finetune/predict_deepseek.py --data tools/finetune/data --out tools/finetune/data/pred_deepseek.jsonl
+DEEPSEEK_API_KEY=... python tools/finetune/predict_deepseek.py --data tools/finetune/data --split holdout --out tools/finetune/data/pred_deepseek_holdout.jsonl
+python tools/finetune/evaluate.py --gold tools/finetune/data/holdout.jsonl --pred tools/finetune/data/pred_local_holdout.jsonl --baseline tools/finetune/data/pred_deepseek_holdout.jsonl --guard
 ```
 
-Recomendação do grupo enquanto isso: manter o Matcher num provedor (Haiku ou `deepseek-flash`). O modelo local é a opção para quem não quer enviar nada para fora. Ele vale a pena se, no conjunto escrito à mão e com a checagem, empatar com o Haiku.
+Recomendação do grupo enquanto isso: manter o Matcher no `deepseek-flash`. O modelo local é a opção para quem não quer enviar nada para fora. Ele vale a pena se, no conjunto escrito à mão e com a checagem, empatar com o `deepseek-flash`.
 
 ## 5. Onde a IA pode errar e como medimos
 
@@ -172,10 +167,24 @@ Os conjuntos de avaliação são fictícios, versionados junto com o código e r
 | RAG só BM25 | 100% | 80,0% | 0,871 |
 | RAG híbrido, modelo local (`paraphrase-multilingual-MiniLM-L12-v2`) | 100% | 87,5% | 0,927 |
 
-As perguntas usam o vocabulário dos documentos, então o BM25 já acha o documento entre os 4 primeiros; o ganho da busca híbrida aparece na ordem (o certo em 1º lugar). **Pendente (depende da chave do usuário):** os conjuntos que chamam o LLM (planejamento, respostas com fonte, fora do escopo e proativos) e o RAG com `text-embedding-3-small`:
+As perguntas usam o vocabulário dos documentos, então o BM25 já acha o documento entre os 4 primeiros; o ganho da busca híbrida aparece na ordem (o certo em 1º lugar).
+
+**Conjuntos que chamam o LLM (2026-11-14):** `deepseek-v4-pro` no Planner e `deepseek-flash` no Matcher, RAG só BM25. Relatório em `tools/eval/results/20261114-2103-deepseek_deepseek-v4-pro_bm25.md`.
+
+| Conjunto | Casos | Métrica | Resultado |
+|----------|------:|---------|----------:|
+| Planejamento | 50 | Plano com as operações do gabarito | 92,0% (46) |
+| Planejamento | 50 | Plano válido na 1ª tentativa | 88,0% |
+| Planejamento | 50 | Tentativas inválidas por pedido | 0,06 |
+| Respostas com fonte | 40 | Resposta correta e com a fonte certa | 15,0% (6) |
+| Respostas com fonte | 40 | Resposta com as palavras-chave esperadas | 97,5% (39) |
+| Fora do escopo | 30 | Recusas corretas | 100% |
+| Proativos e sem direito | 10 | Desfecho esperado | 100% |
+
+- **Planejamento:** os 4 erros são `P14`, `P44` e `P50` (a IA respondeu ou ofereceu opções em vez de propor o plano) e `P39` (propôs só `pick_items`, sem o resto do gabarito).
+- **Respostas com fonte:** o conteúdo está certo em 39 de 40 respostas, mas só 6 citam o código do documento (`POP-03`, `POL-17`...). O prompt de sistema (`Core/Planner/Prompts/system.md`) não pede a citação, embora a tabela acima a trate como obrigatória. **Pendente:** exigir a citação no prompt e medir de novo.
+- **Tokens e tempo por pedido** (entrada + saída, somando as chamadas): planejamento 34.377 e 14,4 s; proativos 32.782 e 14,9 s; respostas com fonte 9.140 e 2,7 s; fora do escopo 6.638 e 1,8 s. A média dos 130 pedidos é 20.088 tokens e 8,0 s. O planejamento consome cerca de 2,5 vezes os 14.000 tokens das premissas da seção 2, então o custo por 1.000 usos de lá está subestimado para o modo proativo.
 
 ```bash
-ANTHROPIC_API_KEY=... dotnet run --project tools/Nexus.Eval -- --suites all --planner claude:claude-sonnet-5-5 --matcher claude:claude-haiku-5-5
 DEEPSEEK_API_KEY=... dotnet run --project tools/Nexus.Eval -- --suites all
-OPENAI_API_KEY=... dotnet run --project tools/Nexus.Eval -- --embeddings openai
 ```

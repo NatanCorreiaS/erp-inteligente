@@ -22,14 +22,14 @@ flowchart TB
         POL["🔒 Policy engine<br/>deny-overrides · escopo por armazém<br/>direito da IA = IA ∩ usuário"]
 
         subgraph AI["Camada de IA"]
-            RM["Recipe Matcher<br/>Haiku 5.5 ou modelo ajustado"]
-            PL["Planner · Sonnet 5.5<br/>skills · memórias filtradas 🔒"]
+            RM["Recipe Matcher<br/>deepseek-flash ou modelo ajustado"]
+            PL["Planner · deepseek-v4-pro<br/>skills · memórias filtradas 🔒"]
             ROCONN["🔒 Ferramentas de leitura<br/>conexão read-only + authorizer<br/>só views v_ai_*"]
         end
 
         subgraph RAG["RAG"]
             CHK["knowledge/*.md<br/>chunking por seção ##"]
-            EMB["Embeddings opcionais<br/>OpenAI 1.536 d · local 384 d"]
+            EMB["Embeddings opcionais<br/>modelo local 384 d · 127.0.0.1"]
             HYB["Busca híbrida<br/>BM25 (FTS5) + cosseno (sqlite-vec) · RRF"]
         end
 
@@ -40,15 +40,14 @@ flowchart TB
         end
     end
 
-    subgraph EXT["Provedores externos · HTTPS · sem dados sensíveis"]
-        CLAUDE["Claude API<br/>DeepSeek / OpenAI opcionais"]
-        OAI["OpenAI<br/>text-embedding-3-small"]
+    subgraph EXT["Provedor externo · HTTPS · sem dados sensíveis"]
+        DS["DeepSeek API<br/>deepseek-v4-pro · deepseek-flash"]
     end
 
     subgraph FT["Fine-tuning · offline"]
         FTD["~500 pedidos fictícios"]
         FTM["LoRA em modelo<br/>aberto pequeno"]
-        FTE["Avaliação vs Haiku"]
+        FTE["Avaliação vs deepseek-flash"]
     end
 
     subgraph DB["🔒 SQLite + SQLCipher · AES-256 em repouso"]
@@ -60,12 +59,11 @@ flowchart TB
     OP --> LOGIN --> CHAT --> POL --> RM
     RM -- "receita" --> VAL
     RM -- "sem receita" --> PL
-    RM <--> CLAUDE
-    PL <--> CLAUDE
+    RM <--> DS
+    PL <--> DS
     PL --> ROCONN --> DATA
     PL --> HYB --> AIDATA
     CHK --> EMB --> AIDATA
-    EMB <--> OAI
     PL -- "propose_plan" --> VAL
     VAL -- "erro estruturado" --> PL
     VAL --> SIM

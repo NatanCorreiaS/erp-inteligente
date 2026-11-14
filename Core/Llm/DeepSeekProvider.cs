@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 namespace erp_inteligente.Core.Llm;
 
 /// <summary>
-/// DeepSeek chat-completions client (OpenAI-compatible, non-streaming). The host is fixed so the key can never be sent
+/// DeepSeek chat-completions client (non-streaming). The host is fixed so the key can never be sent
 /// elsewhere. In thinking mode, <c>reasoning_content</c> is sent back on the following calls, as the API requires when
 /// tools are in use.
 /// </summary>

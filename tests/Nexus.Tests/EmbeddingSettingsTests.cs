@@ -101,7 +101,7 @@ public sealed class EmbeddingSettingsTests : IDisposable
     {
         var vm = await SettingsFor("sup.maria");
         Assert.False(vm.CanConfigure);
-        vm.SelectedEmbedding = vm.EmbeddingOptions.Single(o => o.Choice?.Provider == LlmProviderKind.OpenAI);
+        vm.SelectedEmbedding = vm.EmbeddingOptions.Single(o => o.Choice?.Provider == LlmProviderKind.Local);
         await Settle(vm);
         Assert.Null(_app.Host.LlmSettings.EmbeddingChoice);
         Assert.Equal(0, _server.Texts);

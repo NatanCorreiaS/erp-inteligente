@@ -7,7 +7,7 @@ it has at least 99% valid JSON. With --guard the predictions first go through th
 (C# RecipeTemplate.Instantiate and RecipeGrounding): a recipe with missing or unknown parameters, or with a value that
 is not in the request, counts as "no recipe", which is what the app does with it. Standard library only.
 
-    python tools/finetune/evaluate.py --gold data/test.jsonl --pred local.jsonl --baseline haiku.jsonl --guard
+    python tools/finetune/evaluate.py --gold data/test.jsonl --pred local.jsonl --baseline deepseek.jsonl --guard
 """
 
 import argparse
@@ -217,7 +217,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--gold", required=True)
     parser.add_argument("--pred", required=True, help="Predictions of the candidate (e.g. the fine-tuned model).")
-    parser.add_argument("--baseline", help="Predictions of the baseline (e.g. Claude Haiku 5.5 few-shot).")
+    parser.add_argument("--baseline", help="Predictions of the baseline (e.g. deepseek-flash few-shot).")
     parser.add_argument("--guard", action="store_true",
                         help="Also score after the app's checks; the adoption rule then uses those numbers.")
     args = parser.parse_args(argv)

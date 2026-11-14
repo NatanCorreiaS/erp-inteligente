@@ -373,9 +373,7 @@ flowchart TB
     end
 
     subgraph NET["Internet · HTTPS"]
-        API1["api.anthropic.com"]
-        API2["api.openai.com"]
-        API3["api.deepseek.com (opcional)"]
+        API1["api.deepseek.com"]
     end
 
     subgraph TRAIN["Máquina de treino · offline"]
@@ -388,7 +386,5 @@ flowchart TB
     C_AI --> F_SK
     C_SEC --> KS
     C_AI --> API1
-    C_AI --> API2
-    C_AI -.-> API3
     FT -. "modelo exportado" .-> C_AI
 ```

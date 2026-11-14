@@ -65,8 +65,8 @@ public class LlmSettingsTests
     public void Model_RejectsUnknown_AndFallsBackOnStoredGarbage()
     {
         var (s, store) = Make();
-        Assert.Throws<ArgumentException>(() => s.Model = "gpt-evil");
-        store.Set("db1", "llm.deepseek.model", Encoding.UTF8.GetBytes("gpt-evil"));
+        Assert.Throws<ArgumentException>(() => s.Model = "modelo-estranho");
+        store.Set("db1", "llm.deepseek.model", Encoding.UTF8.GetBytes("modelo-estranho"));
         Assert.Equal("deepseek-v4-pro", s.Model);
     }
 

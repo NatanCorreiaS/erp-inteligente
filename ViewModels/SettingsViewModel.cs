@@ -35,7 +35,7 @@ public sealed record EmbeddingOption(LlmChoice? Choice, string Label)
 /// <summary>
 /// Session and application information, plus the LLM section (feature 8):
 /// <list type="bullet">
-/// <item>the key state of DeepSeek, Claude and OpenAI; an administrator types a key for the chosen provider (kept in the
+/// <item>the key state of DeepSeek; an administrator types the key (kept in the
 /// OS key store, never shown again) and tests it;</item>
 /// <item>the provider and model of each role (Planner and Recipe Matcher; the Matcher may use the local fine-tuned model);</item>
 /// <item>the port of the local model server (loopback only).</item>
@@ -196,11 +196,10 @@ public sealed partial class SettingsViewModel : PageViewModel
 
     // ---- embeddings of the RAG (feature 5) -------------------------------------------------------------------
 
-    /// <summary>Off (BM25 only), OpenAI text-embedding-3-small or the model served on 127.0.0.1.</summary>
+    /// <summary>Off (BM25 only) or the model served on 127.0.0.1.</summary>
     public IReadOnlyList<EmbeddingOption> EmbeddingOptions { get; } =
     [
         new(null, "Desligada (só palavras)"),
-        new(new LlmChoice(LlmProviderKind.OpenAI, LlmSettings.OpenAiEmbeddingModel), "OpenAI · " + LlmSettings.OpenAiEmbeddingModel),
         new(new LlmChoice(LlmProviderKind.Local, LlmSettings.LocalEmbeddingModel), "Modelo local · " + LlmSettings.LocalEmbeddingModel),
     ];
 

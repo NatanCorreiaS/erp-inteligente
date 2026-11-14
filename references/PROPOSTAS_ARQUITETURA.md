@@ -41,7 +41,7 @@ Todas as propostas precisam atender a estas premissas:
 ## 3. Blocos comuns às três propostas
 
 ### 3.1 Provedores de LLM
-- Interface única `ILlmProvider` (chat, tool calling, streaming e contagem de tokens) com adaptadores para **Claude**, **OpenAI** e **DeepSeek**. A API da DeepSeek é compatível com a da OpenAI, então pode reaproveitar o mesmo adaptador com outra URL base.
+- Interface única `ILlmProvider` (chat, tool calling, streaming e contagem de tokens) com o adaptador da **DeepSeek**. Um modelo local que fale o mesmo formato de *chat completions* pode reaproveitar o adaptador com outra URL base.
 - Configuração de **modelo por tipo de tarefa**: modelo barato para classificação e extração, modelo forte para planejamento e exceções.
 - As chaves de API ficam no armazenamento seguro do sistema operacional, nunca no SQLite em texto puro.
 
@@ -151,7 +151,7 @@ Memory Consolidator (job periódico)
 
 ### Destaques
 - Auditoria completa sem esforço extra: o log *é* a fonte da verdade.
-- Cada agente pode usar um modelo diferente (DeepSeek no roteador, Claude no supervisor, por exemplo).
+- Cada agente pode usar um modelo diferente (`deepseek-flash` no roteador, `deepseek-v4-pro` no supervisor, por exemplo).
 - O histórico de eventos é uma base rica para o aprendizado (ex.: detectar endereços com divergência recorrente).
 
 ### Prós

@@ -85,23 +85,25 @@ public sealed class LlmUsageTests : IDisposable
     public void Report_counts_requests_recipe_share_and_costs_per_currency()
     {
         var maria = _f.SessionFor("sup.maria");
-        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeStrongModel), 3, 1_000_000, 100_000, "proposals"));
-        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeFastModel), 1, 1_000_000, 0, "recipe"));
-        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeFastModel), 1, 0, 0, "no_match"));
-        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel), 1, 1_000_000, 1_000_000, "answer"));
-        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.OpenAI, LlmSettings.OpenAiStrongModel), 1, 500, 500, "answer"));
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel), 3, 1_000_000, 100_000, "proposals"));
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), 1, 1_000_000, 0, "recipe"));
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), 1, 0, 0, "no_match"));
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), 1, 1_000_000, 1_000_000, "answer"));
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, "modelo-sem-preco"), 1, 500, 500, "answer"));
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.Local, LlmSettings.LocalModel), 1, 200, 20, "no_match"));
 
         var report = _usage.Report(maria, _f.Time.GetUtcNow().AddDays(-30));
 
         Assert.Equal(4, report.Requests); // 3 planner requests + 1 solved by a recipe
         Assert.Equal(1, report.ByRecipe);
         Assert.Equal(0.25, report.RecipeShare);
-        Assert.Equal(2m + 1m + 0.1m, report.CostByCurrency["USD"]); // Sonnet 1M in + 0.1M out; Haiku 1M in
-        Assert.Equal(9m + 27m, report.CostByCurrency["CNY"]);
+        // Strong planner: 1M in + 0.1M out; fast matcher: 1M in; fast planner: 1M in + 1M out.
+        Assert.Equal(9m + 2.7m + 2m + 2m + 8m, report.CostByCurrency["CNY"]);
+        Assert.Equal(0m, report.CostByCurrency["USD"]); // the local model costs nothing per token
         Assert.Equal(1000, report.Unpriced);
-        Assert.Equal(4, report.Lines.Count); // the two Haiku matcher rows are one line
-        var haiku = report.Lines.Single(l => l.Model == LlmSettings.ClaudeFastModel);
-        Assert.Equal((2L, 2L), (haiku.Requests, haiku.Calls));
+        Assert.Equal(5, report.Lines.Count); // the two fast matcher rows are one line
+        var matcher = report.Lines.Single(l => l.Role == LlmUseRole.Matcher && l.Provider == LlmProviderKind.DeepSeek);
+        Assert.Equal((2L, 2L), (matcher.Requests, matcher.Calls));
         Assert.Throws<PolicyDeniedException>(() => _usage.Report(_joao, _f.Time.GetUtcNow().AddDays(-30)));
     }
 
@@ -116,14 +118,14 @@ public sealed class LlmUsageTests : IDisposable
     [Fact]
     public void Cached_input_is_priced_at_its_share_of_the_input_price()
     {
-        var choice = new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeStrongModel);
+        var choice = new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel);
         _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, choice, 3, 1_000_000, 100_000, "answer")
         {
             CacheReadTokens = 800_000,
             CacheWriteTokens = 100_000,
         });
         // A cached part larger than the prompt is clamped to it.
-        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeFastModel), 1, 100, 10, "no_match")
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), 1, 100, 10, "no_match")
         {
             CacheReadTokens = 5_000,
         });
@@ -131,10 +133,10 @@ public sealed class LlmUsageTests : IDisposable
         var report = _usage.Report(_f.SessionFor("sup.maria"), _f.Time.GetUtcNow().AddDays(-1));
 
         var planner = report.Lines.Single(l => l.Role == LlmUseRole.Planner);
-        // Per million: 100k uncached × US$ 2 + 800k read × US$ 0.20 + 100k written × US$ 2.50 + 100k out × US$ 10.
-        Assert.Equal(0.20m + 0.16m + 0.25m + 1.00m, planner.Cost);
+        // Per million: 100k uncached × ¥ 9 + 800k read × ¥ 0.90 + 100k written × ¥ 11.25 + 100k out × ¥ 27.
+        Assert.Equal(0.90m + 0.72m + 1.125m + 2.70m, planner.Cost);
         Assert.Equal(800_000, planner.CacheReadTokens);
         Assert.Equal(100, Count("SELECT cache_read_tokens FROM llm_usage WHERE role = 'matcher'"));
-        Assert.Equal(0.10m * 0.10m * 100 / 1_000_000m + 0.50m * 10 / 1_000_000m, report.Lines.Single(l => l.Role == LlmUseRole.Matcher).Cost);
+        Assert.Equal(2m * 0.10m * 100 / 1_000_000m + 8m * 10 / 1_000_000m, report.Lines.Single(l => l.Role == LlmUseRole.Matcher).Cost);
     }
 }

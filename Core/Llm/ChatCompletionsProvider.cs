@@ -11,9 +11,9 @@ using System.Threading.Tasks;
 namespace erp_inteligente.Core.Llm;
 
 /// <summary>
-/// Client of the "chat completions" wire format (non-streaming), shared by DeepSeek, OpenAI and a local
-/// OpenAI-compatible server. The endpoint is fixed by each subclass, so a key can never be sent elsewhere; errors carry
-/// only a kind and a status code, never the key or the response body.
+/// Client of the "chat completions" wire format (non-streaming), shared by DeepSeek and a local server that speaks the
+/// same format. The endpoint is fixed by each subclass, so a key can never be sent elsewhere; errors carry only a kind
+/// and a status code, never the key or the response body.
 /// </summary>
 public abstract class ChatCompletionsProvider : ILlmProvider
 {
@@ -37,9 +37,6 @@ public abstract class ChatCompletionsProvider : ILlmProvider
 
     /// <summary>The fixed URL of the chat completions endpoint.</summary>
     protected abstract Uri Endpoint { get; }
-
-    /// <summary>Name of the output limit in the body: <c>max_tokens</c> (DeepSeek, local) or <c>max_completion_tokens</c> (OpenAI).</summary>
-    protected virtual string MaxTokensField => "max_tokens";
 
     /// <summary>DeepSeek returns <c>reasoning_content</c> and requires it back when tools are in use.</summary>
     protected virtual bool SendsReasoningBack => false;
@@ -139,7 +136,7 @@ public abstract class ChatCompletionsProvider : ILlmProvider
                 }
                 w.WriteEndArray();
             }
-            w.WriteNumber(MaxTokensField, r.MaxTokens);
+            w.WriteNumber("max_tokens", r.MaxTokens);
             if (r.Temperature is { } temp) w.WriteNumber("temperature", temp);
             extra?.Invoke(w);
             w.WriteBoolean("stream", false);
@@ -225,7 +222,14 @@ public abstract class ChatCompletionsProvider : ILlmProvider
 
             var usage = new LlmUsage(0, 0);
             if (root.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
-                usage = new LlmUsage(Int(u, "prompt_tokens"), Int(u, "completion_tokens"));
+            {
+                // DeepSeek caches prompt prefixes by itself and reports the part of the prompt it read from the cache.
+                var prompt = Int(u, "prompt_tokens");
+                usage = new LlmUsage(prompt, Int(u, "completion_tokens"))
+                {
+                    CacheReadTokens = Math.Clamp(Int(u, "prompt_cache_hit_tokens"), 0, prompt),
+                };
+            }
 
             return new LlmResponse(Str(msg, "content"), calls, Str(msg, "reasoning_content"), finish, usage);
         }

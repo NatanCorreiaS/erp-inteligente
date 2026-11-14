@@ -1027,7 +1027,7 @@ public sealed partial class Planner(
 
     private string MessageFor(LlmErrorKind kind)
     {
-        var provider = KeyHolder(settings.ChoiceFor(LlmUseRole.Planner).Provider);
+        const string provider = "DeepSeek";
         return kind switch
         {
             LlmErrorKind.NotConfigured => $"Configure a chave da {provider} em Configurações (administrador).",
@@ -1036,13 +1036,6 @@ public sealed partial class Planner(
             _ => "O provedor de IA está indisponível no momento. Tente de novo em instantes.",
         };
     }
-
-    private static string KeyHolder(LlmProviderKind provider) => provider switch
-    {
-        LlmProviderKind.Claude => "Anthropic (Claude)",
-        LlmProviderKind.OpenAI => "OpenAI",
-        _ => "DeepSeek",
-    };
 
     /// <summary>The planning request: the model and provider configured for the Planner role (feature 8).</summary>
     private LlmRequest PlannerRequest(IReadOnlyList<LlmMessage> messages, IReadOnlyList<LlmTool> tools)

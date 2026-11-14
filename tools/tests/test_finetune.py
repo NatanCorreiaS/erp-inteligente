@@ -1,7 +1,7 @@
 """Tests for tools/finetune (dataset generator and evaluator of the Recipe Matcher experiment).
 
 Run from the repository root:  python3 -m unittest discover -s tools/tests -v
-Standard library only: training and the API baseline are not exercised here.
+Standard library only: training is not exercised here, and the API baseline never reaches the network.
 """
 
 import json
@@ -13,6 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "finetun
 
 import evaluate  # noqa: E402
 import generate_dataset  # noqa: E402
+import predict_deepseek  # noqa: E402
 import serve_local  # noqa: E402
 import train_lora  # noqa: E402
 
@@ -193,7 +194,7 @@ class ServeLocalTests(unittest.TestCase):
         self.assertEqual(limit, serve_local.MAX_NEW_TOKENS)
 
     def test_chat_request_is_validated(self):
-        for body in ({"model": "gpt-5", "messages": [{"role": "user", "content": "x"}]},
+        for body in ({"model": "outro-modelo", "messages": [{"role": "user", "content": "x"}]},
                      {"model": "nexus-matcher", "messages": []},
                      {"model": "nexus-matcher", "messages": [{"role": "tool", "content": "x"}]},
                      {"model": "nexus-matcher", "messages": [{"role": "user", "content": "x"}], "max_tokens": 0}):
@@ -208,7 +209,7 @@ class ServeLocalTests(unittest.TestCase):
             with self.subTest(body=body), self.assertRaises(serve_local.BadRequest):
                 serve_local.parse_embeddings(body)
 
-    def test_responses_have_the_openai_shape_the_app_reads(self):
+    def test_responses_have_the_shape_the_app_reads(self):
         chat = serve_local.chat_response('{"intent":"none"}', 10, 5)
         self.assertEqual(chat["choices"][0]["message"], {"role": "assistant", "content": '{"intent":"none"}'})
         self.assertEqual(chat["usage"]["total_tokens"], 15)
@@ -219,6 +220,56 @@ class ServeLocalTests(unittest.TestCase):
 
     def test_server_binds_only_to_loopback(self):
         self.assertEqual(serve_local.HOST, "127.0.0.1")
+
+
+class DeepSeekBaselineTests(unittest.TestCase):
+    """The few-shot baseline: request shape, fixed host and key handling (no call is made)."""
+
+    KEY = "sk-test-0123456789"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.train, _ = generate_dataset.build(seed=42)
+
+    def test_few_shot_alternates_turns_and_includes_out_of_scope_examples(self):
+        turns = predict_deepseek.few_shot(self.train, 8, seed=7)
+        self.assertEqual([t["role"] for t in turns], ["user", "assistant"] * 8)
+        answers = [json.loads(t["content"]) for t in turns[1::2]]
+        self.assertEqual(sum(1 for a in answers if a == {"intent": "none"}), 2)
+        self.assertEqual(turns, predict_deepseek.few_shot(self.train, 8, seed=7))
+
+    def test_request_goes_to_the_fixed_host_with_the_key_only_in_the_header(self):
+        examples = predict_deepseek.few_shot(self.train, 4, seed=7)
+        request = predict_deepseek.build_request(self.KEY, "sistema", examples, "guarda 40 ABC-123")
+        self.assertEqual(request.full_url, "https://api.deepseek.com/chat/completions")
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.get_header("Authorization"), "Bearer " + self.KEY)
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertNotIn(self.KEY, request.data.decode("utf-8"))
+        self.assertEqual(body["model"], "deepseek-flash")
+        self.assertIs(body["stream"], False)
+        self.assertEqual(body["messages"][0], {"role": "system", "content": "sistema"})
+        self.assertEqual(body["messages"][-1], {"role": "user", "content": "guarda 40 ABC-123"})
+        self.assertEqual(len(body["messages"]), 2 + len(examples))
+
+    def test_missing_or_malformed_key_is_refused_without_echoing_it(self):
+        for key in ("", "sk com espaço", "sk-linha\nAuthorization: x", "sk-ção"):
+            with self.subTest(key=key), self.assertRaises(ValueError) as raised:
+                predict_deepseek.build_request(key, "s", [], "u")
+            if key:
+                self.assertNotIn(key, str(raised.exception))
+
+    def test_redirects_are_refused(self):
+        handler = predict_deepseek.NoRedirect()
+        request = predict_deepseek.build_request(self.KEY, "s", [], "u")
+        self.assertIsNone(handler.redirect_request(request, None, 302, "Found", {}, "https://evil.example.com/"))
+
+    def test_answer_text_and_finish_reason_are_read(self):
+        payload = json.dumps({"choices": [{"message": {"role": "assistant", "content": '{"intent":"none"}'},
+                                           "finish_reason": "stop"}]})
+        self.assertEqual(predict_deepseek.read_answer(payload), ('{"intent":"none"}', "stop"))
+        empty = json.dumps({"choices": [{"message": {"role": "assistant", "content": None}, "finish_reason": "length"}]})
+        self.assertEqual(predict_deepseek.read_answer(empty), ("", "length"))
 
 
 class TrainLabelTests(unittest.TestCase):

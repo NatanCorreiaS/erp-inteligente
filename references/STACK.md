@@ -15,13 +15,9 @@
 
 ## Provedores de LLM
 
-O ERP deve oferecer suporte às APIs dos seguintes provedores:
+O único provedor externo de LLM é a **DeepSeek** (decisão de 2026-11-14). O Recipe Matcher também pode usar um modelo local ajustado por fine-tuning, servido em `127.0.0.1`.
 
-- DeepSeek
-- Claude (Anthropic)
-- OpenAI
-
-Embeddings do RAG: `text-embedding-3-small` (OpenAI) ou um modelo de embeddings local. Modelos padrão e custos em [`IA.md`](IA.md).
+Embeddings do RAG: um modelo de embeddings local, servido em `127.0.0.1`. Modelos padrão e custos em [`IA.md`](IA.md).
 
 ## Testes dos scripts de banco
 

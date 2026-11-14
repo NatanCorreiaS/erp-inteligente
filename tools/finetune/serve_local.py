@@ -1,4 +1,4 @@
-"""Serves the fine-tuned Matcher and a local embeddings model on 127.0.0.1 with the OpenAI wire format.
+"""Serves the fine-tuned Matcher and a local embeddings model on 127.0.0.1 with the chat completions and embeddings wire formats.
 
 What the app's Local provider (Configurações > Modelo local) and the local embeddings option call:
 

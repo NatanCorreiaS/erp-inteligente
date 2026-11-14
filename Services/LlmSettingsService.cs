@@ -12,7 +12,7 @@ using erp_inteligente.Models;
 namespace erp_inteligente.Services;
 
 /// <summary>
-/// The LLM settings seen from the Settings screen (feature 8: DeepSeek, Claude, OpenAI and a local model; a model per
+/// The LLM settings seen from the Settings screen (feature 8: DeepSeek and a local model; a model per
 /// role). Only an administrator (<c>user.manage</c>, checked live) changes keys, models or the local port; every change is
 /// audited without the value of a key. Keys never leave the OS key store except to authenticate a request. The members
 /// without a provider argument are DeepSeek's, as before.
@@ -58,7 +58,7 @@ public sealed class LlmSettingsService(
         var name = choice.Provider == LlmProviderKind.Local ? "Modelo local" : LlmSettings.ProviderName(choice.Provider);
         return error switch
         {
-            LlmErrorKind.NotConfigured => choice.Provider == LlmProviderKind.Local ? "A porta do modelo local é inválida." : "Sem chave da OpenAI: salve a chave acima.",
+            LlmErrorKind.NotConfigured => "A porta do modelo local é inválida.",
             LlmErrorKind.Unauthorized => $"{name}: a chave foi recusada.",
             LlmErrorKind.RateLimited => $"{name}: limite de uso atingido. Tente mais tarde.",
             LlmErrorKind.Timeout => $"{name}: não respondeu a tempo.",

@@ -1,4 +1,4 @@
-"""Predictions of the fine-tuned model served on this machine by an OpenAI-compatible server (llama.cpp, vLLM, Ollama).
+"""Predictions of the fine-tuned model served on this machine by a chat-completions server (llama.cpp, vLLM, Ollama).
 
 Sends exactly what the app sends to the Local provider (system prompt + recipe catalog, then the request) to
 http://127.0.0.1:PORT/v1/chat/completions and writes {"id", "prediction"} per test example. Loopback only, no key.

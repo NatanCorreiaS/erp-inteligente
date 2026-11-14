@@ -131,17 +131,14 @@ public sealed class LlmUsageLog(NexusDatabase database, TimeProvider time, Polic
 public sealed record LlmPrice(string Currency, decimal Input, decimal Output);
 
 /// <summary>
-/// Prices per million tokens used for the estimates (references/IA.md, section 2, consulted on 2026-10-27: Anthropic in
-/// US$, DeepSeek in ¥ at peak hours). Models without a published price there have none here: the panel shows their
+/// Prices per million tokens used for the estimates (references/IA.md, section 2, consulted on 2026-10-27: DeepSeek in
+/// ¥ at peak hours). Models without a published price there have none here: the panel shows their
 /// tokens without a cost instead of guessing. The local model costs nothing per token.
 /// </summary>
 public static class LlmPrices
 {
     private static readonly Dictionary<(LlmProviderKind, string), LlmPrice> Table = new()
     {
-        [(LlmProviderKind.Claude, LlmSettings.ClaudeTopModel)] = new("USD", 4.00m, 20.00m),
-        [(LlmProviderKind.Claude, LlmSettings.ClaudeStrongModel)] = new("USD", 2.00m, 10.00m),
-        [(LlmProviderKind.Claude, LlmSettings.ClaudeFastModel)] = new("USD", 0.10m, 0.50m),
         [(LlmProviderKind.DeepSeek, LlmSettings.StrongModel)] = new("CNY", 9.00m, 27.00m),
         [(LlmProviderKind.DeepSeek, LlmSettings.FastModel)] = new("CNY", 2.00m, 8.00m),
         [(LlmProviderKind.Local, LlmSettings.LocalModel)] = new("USD", 0m, 0m),
@@ -149,7 +146,7 @@ public static class LlmPrices
 
     public static LlmPrice? For(LlmProviderKind provider, string model) => Table.GetValueOrDefault((provider, model));
 
-    /// <summary>Price of a cache read and of a cache write (5-minute cache), as a share of the input price (Anthropic).</summary>
+    /// <summary>Price of a cache read and of a cache write (5-minute cache), as a share of the input price.</summary>
     public const decimal CacheReadShare = 0.10m;
     public const decimal CacheWriteShare = 1.25m;
 

@@ -30,7 +30,7 @@ public sealed class AppHost : IDisposable
     /// <param name="secrets">The OS key store; it also holds the DeepSeek key (references/ARQUITETURA.md, section 12.10).</param>
     /// <param name="llm">The provider; null builds the real DeepSeek client (tests pass a scripted one).</param>
     /// <param name="runScheduledJobs">Runs the daily jobs now (feature 9: backup and memory maintenance); the app does, tests do not.</param>
-    /// <param name="embeddings">Embeddings of the RAG; null builds the configured provider (OpenAI or local), or none when
+    /// <param name="embeddings">Embeddings of the RAG; null builds the configured provider (the local server), or none when
     /// <paramref name="llm"/> is scripted (tests never reach a real API).</param>
     /// <param name="embeddingsHandler">HTTP handler of the configured embeddings provider (tests pass a fake one).</param>
     public AppHost(NexusDatabase database, TimeProvider time, Argon2Parameters passwordParameters, AuthOptions authOptions,
@@ -57,21 +57,15 @@ public sealed class AppHost : IDisposable
         var settings = LlmSettings;
         var handler = ChatCompletionsProvider.CreateDefaultHandler();
         DeepSeekProvider? deepSeek = null;
-        ClaudeProvider? claude = null;
-        OpenAiProvider? openAi = null;
         LocalProvider? local = null;
         if (llm is null)
         {
             deepSeek = new DeepSeekProvider(handler, () => settings.ReadKey(LlmProviderKind.DeepSeek));
-            claude = new ClaudeProvider(handler, () => settings.ReadKey(LlmProviderKind.Claude));
-            openAi = new OpenAiProvider(handler, () => settings.ReadKey(LlmProviderKind.OpenAI));
             local = new LocalProvider(handler, () => settings.LocalPort);
         }
         Llm = llm ?? new LlmRouter(new Dictionary<LlmProviderKind, ILlmProvider>
         {
             [LlmProviderKind.DeepSeek] = deepSeek!,
-            [LlmProviderKind.Claude] = claude!,
-            [LlmProviderKind.OpenAI] = openAi!,
             [LlmProviderKind.Local] = local!,
         });
         // Feature 5: vectors of the procedures for the hybrid search; off until an administrator picks a provider.
@@ -82,8 +76,6 @@ public sealed class AppHost : IDisposable
         LlmSettingsService = new LlmSettingsService(LlmSettings, Policy, AuditLog, (provider, ct) => provider switch
         {
             LlmProviderKind.DeepSeek => deepSeek?.TestConnectionAsync(ct) ?? Task.CompletedTask,
-            LlmProviderKind.Claude => claude?.TestConnectionAsync(ct) ?? Task.CompletedTask,
-            LlmProviderKind.OpenAI => openAi?.TestConnectionAsync(ct) ?? Task.CompletedTask,
             _ => local?.TestConnectionAsync(LlmSettings.LocalModel, ct) ?? Task.CompletedTask,
         }, VectorIndex);
         SyncKnowledge(database);

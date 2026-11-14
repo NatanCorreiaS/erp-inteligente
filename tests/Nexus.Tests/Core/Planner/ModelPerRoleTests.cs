@@ -42,14 +42,14 @@ public sealed class ModelPerRoleTests : IDisposable
     [Fact]
     public async Task Planner_and_matcher_send_their_own_provider_and_model()
     {
-        _settings.SetChoice(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeStrongModel));
-        _settings.SetChoice(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.OpenAI, LlmSettings.OpenAiFastModel));
+        _settings.SetChoice(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel));
+        _settings.SetChoice(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel));
         _llm.Enqueue(Text("{\"receita\": null}")).Enqueue(Text("Preciso confirmar o destino."));
 
         await Run(Request);
 
-        Assert.Equal((LlmProviderKind.OpenAI, LlmSettings.OpenAiFastModel), (_llm.Requests[0].Provider, _llm.Requests[0].Model));
-        Assert.Equal((LlmProviderKind.Claude, LlmSettings.ClaudeStrongModel), (_llm.Requests[1].Provider, _llm.Requests[1].Model));
+        Assert.Equal((LlmProviderKind.DeepSeek, LlmSettings.StrongModel), (_llm.Requests[0].Provider, _llm.Requests[0].Model));
+        Assert.Equal((LlmProviderKind.DeepSeek, LlmSettings.FastModel), (_llm.Requests[1].Provider, _llm.Requests[1].Model));
     }
 
     [Fact]
@@ -84,12 +84,11 @@ public sealed class ModelPerRoleTests : IDisposable
     }
 
     [Fact]
-    public async Task A_missing_key_names_the_provider_of_the_planner()
+    public async Task A_missing_key_names_deepseek()
     {
-        _settings.SetChoice(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeStrongModel));
         _llm.Throw(new LlmException(LlmErrorKind.NotConfigured, "x"));
         var (result, _) = await Run("oi");
-        Assert.Equal("Configure a chave da Anthropic (Claude) em Configurações (administrador).", Assert.IsType<PlannerFailed>(result).Reason);
+        Assert.Equal("Configure a chave da DeepSeek em Configurações (administrador).", Assert.IsType<PlannerFailed>(result).Reason);
     }
 
     [Fact]

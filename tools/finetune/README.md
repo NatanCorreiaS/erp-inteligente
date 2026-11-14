@@ -2,17 +2,17 @@
 
 Feature 8 of `ROADMAP.md`; design in `references/ARQUITETURA.md` (section 10.1) and `references/IA.md` (section 4).
 Task: a warehouse request in Portuguese becomes `{"intent", "recipe", "params"}`, or `{"intent": "none"}` when no
-recipe fits. The fine-tuned model replaces Claude Haiku 5.5 as the Matcher only if it ties or beats it on exact match
+recipe fits. The fine-tuned model replaces `deepseek-flash` as the Matcher only if it ties or beats it on exact match
 and has at least 99% valid JSON.
 
 | Step | Command | Needs |
 |------|---------|-------|
 | 1. Dataset (500 examples, 400 train / 100 test, 15% out of scope) and the hand-written holdout (40, from `holdout.json`) | `python tools/finetune/generate_dataset.py` | Standard library |
-| 2. Baseline: Haiku 5.5 few-shot | `python tools/finetune/predict_claude.py --data tools/finetune/data --out tools/finetune/data/pred_haiku.jsonl` | `anthropic` SDK, `ANTHROPIC_API_KEY` |
+| 2. Baseline: `deepseek-flash` few-shot | `python tools/finetune/predict_deepseek.py --data tools/finetune/data --out tools/finetune/data/pred_deepseek.jsonl` | Standard library, `DEEPSEEK_API_KEY` |
 | 3. LoRA training (Qwen2.5-1.5B-Instruct) | `python tools/finetune/train_lora.py --data tools/finetune/data --out DIR/nexus-matcher` | CUDA GPU, `requirements-train.txt` |
 | 4. Serve on `127.0.0.1` (Matcher `nexus-matcher` and embeddings `nexus-embed`) | `python tools/finetune/serve_local.py --matcher DIR/nexus-matcher/merged --port 8080` | `requirements-train.txt` |
 | 5. Candidate predictions | `python tools/finetune/predict_local.py --data tools/finetune/data --out tools/finetune/data/pred_local.jsonl --port 8080` | Standard library |
-| 6. Metrics and adoption | `python tools/finetune/evaluate.py --gold tools/finetune/data/test.jsonl --pred tools/finetune/data/pred_local.jsonl --baseline tools/finetune/data/pred_haiku.jsonl --guard` | Standard library |
+| 6. Metrics and adoption | `python tools/finetune/evaluate.py --gold tools/finetune/data/test.jsonl --pred tools/finetune/data/pred_local.jsonl --baseline tools/finetune/data/pred_deepseek.jsonl --guard` | Standard library |
 
 Steps 2 and 5 take `--split holdout` to predict the hand-written set; score it with `--gold tools/finetune/data/holdout.jsonl`.
 The generated test set shares the generator's templates with the training set, so it measures the templates; the
@@ -42,6 +42,6 @@ Results of the first run (2026-11-12, GTX 1660, 3 h of training; details in `ref
 | Holdout (40), `--guard` | 100% | 92.5% | 0.986 | 80% |
 
 The model fills a missing value with a plausible one; the app's grounding check turns that into "no recipe". About 6 s
-per request on that GPU (fp16 transformers). The Haiku baseline is pending an Anthropic key.
+per request on that GPU (fp16 transformers). The `deepseek-flash` baseline has not been run yet.
 
 Data is fictitious (catalog of `db/seed.sql` plus the recipes in `recipes.json`). Nothing here stores a key.

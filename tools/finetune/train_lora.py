@@ -10,7 +10,7 @@ requirements-train.txt; it is not run by the test suite.
     python tools/finetune/train_lora.py --data tools/finetune/data --out <dir>/nexus-matcher
 
 The adapter is saved in --out and, unless --no-merge, the base model with the adapter merged in fp16 in --out/merged,
-ready for serve_local.py. The model replaces Claude Haiku 5.5 only if evaluate.py says so (exact match tie or better,
+ready for serve_local.py. The model replaces deepseek-flash as the Matcher only if evaluate.py says so (exact match tie or better,
 >= 99% valid JSON).
 """
 

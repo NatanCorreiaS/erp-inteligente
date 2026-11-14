@@ -380,7 +380,7 @@ CREATE TABLE llm_usage (
     user_id           INTEGER REFERENCES users (id),
     warehouse_id      INTEGER REFERENCES warehouses (id),
     role              TEXT NOT NULL CHECK (role IN ('planner', 'matcher')),
-    provider          TEXT NOT NULL CHECK (provider IN ('deepseek', 'claude', 'openai', 'local')),
+    provider          TEXT NOT NULL CHECK (provider IN ('deepseek', 'local')),
     model             TEXT NOT NULL CHECK (length(model) BETWEEN 1 AND 80),
     calls             INTEGER NOT NULL CHECK (calls >= 0),
     prompt_tokens     INTEGER NOT NULL CHECK (prompt_tokens >= 0),

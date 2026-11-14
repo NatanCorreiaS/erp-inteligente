@@ -8,20 +8,20 @@ using erp_inteligente.Models;
 using Nexus.Eval;
 
 // Runs the evaluation sets of references/IA.md, section 5 (tools/eval) on a fresh database with the seed data.
-// Keys come only from environment variables (never from arguments): DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY.
-// They go to an in-memory key store of this process and are never written anywhere.
+// The key comes only from the DEEPSEEK_API_KEY environment variable (never from arguments). It goes to an in-memory key
+// store of this process and is never written anywhere.
 //
 //   dotnet run --project tools/Nexus.Eval                                    # RAG recall@4, BM25 only (no key)
 //   dotnet run --project tools/Nexus.Eval -- --embeddings local --port 8080  # hybrid, local embeddings server
-//   dotnet run --project tools/Nexus.Eval -- --suites all --planner claude:claude-sonnet-5-5 --matcher claude:claude-haiku-5-5
+//   dotnet run --project tools/Nexus.Eval -- --suites all                             # every set; needs DEEPSEEK_API_KEY
 
 var options = ParseArgs(args);
 if (options is null)
 {
     Console.Error.WriteLine("""
         Uso: Nexus.Eval [--suites rag,planning,knowledge,scope|all] [--planner provedor[:modelo]] [--matcher provedor[:modelo]]
-                        [--embeddings off|openai|local] [--port N] [--limit N] [--label nome] [--out pasta]
-        Chaves por variável de ambiente: DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY.
+                        [--embeddings off|local] [--port N] [--limit N] [--label nome] [--out pasta]
+        Chave por variável de ambiente: DEEPSEEK_API_KEY.
         """);
     return 2;
 }
@@ -34,9 +34,8 @@ var database = DatabaseBootstrapper.OpenOrCreate(Path.Combine(dbDir.FullName, "n
 using var host = new AppHost(database, TimeProvider.System, Argon2Parameters.Default, AuthOptions.Default, store);
 try
 {
-    foreach (var (provider, name) in new[] { (LlmProviderKind.DeepSeek, "DEEPSEEK_API_KEY"), (LlmProviderKind.Claude, "ANTHROPIC_API_KEY"), (LlmProviderKind.OpenAI, "OPENAI_API_KEY") })
-        if (Environment.GetEnvironmentVariable(name) is { Length: > 0 } key)
-            host.LlmSettings.SetKey(provider, key);
+    if (Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") is { Length: > 0 } key)
+        host.LlmSettings.SetKey(key);
     if (options.Port is { } port) host.LlmSettings.LocalPort = port;
     if (options.Planner is { } planner) host.LlmSettings.SetChoice(LlmUseRole.Planner, planner);
     if (options.Matcher is { } matcher) host.LlmSettings.SetChoice(LlmUseRole.Matcher, matcher);
@@ -47,7 +46,7 @@ try
     var plannerChoice = host.LlmSettings.ChoiceFor(LlmUseRole.Planner);
     if (needsLlm && !host.LlmSettings.IsConfiguredFor(plannerChoice.Provider))
     {
-        Console.Error.WriteLine($"Sem chave para {LlmSettings.ProviderName(plannerChoice.Provider)}: defina a variável de ambiente do provedor.");
+        Console.Error.WriteLine($"Sem chave para {LlmSettings.ProviderName(plannerChoice.Provider)}: defina a variável de ambiente DEEPSEEK_API_KEY.");
         return 3;
     }
     if (options.Embeddings is not null)
@@ -117,7 +116,6 @@ static EvalOptions? ParseArgs(string[] args)
                     o.Embeddings = e switch
                     {
                         "off" => null,
-                        "openai" => new LlmChoice(LlmProviderKind.OpenAI, LlmSettings.OpenAiEmbeddingModel),
                         "local" => new LlmChoice(LlmProviderKind.Local, LlmSettings.LocalEmbeddingModel),
                         _ => throw new ArgumentException(e),
                     };

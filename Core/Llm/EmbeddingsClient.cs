@@ -3,7 +3,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,9 +11,10 @@ using erp_inteligente.Core.Knowledge;
 namespace erp_inteligente.Core.Llm;
 
 /// <summary>
-/// Client of the OpenAI "embeddings" wire format, used by OpenAI and by a local OpenAI-compatible server. Same rules as
-/// <see cref="ChatCompletionsProvider"/>: fixed endpoint, no redirects (<see cref="ChatCompletionsProvider.CreateDefaultHandler"/>),
-/// the key read per call and zeroed, errors with a kind and a status code only, never the key, the text or the body.
+/// Client of the "embeddings" wire format (<c>/v1/embeddings</c>) of the local model server. Loopback only, so no text
+/// leaves the machine and there is no key. Same rules as <see cref="ChatCompletionsProvider"/>: no redirects
+/// (<see cref="ChatCompletionsProvider.CreateDefaultHandler"/>), errors with a kind and a status code only, never the text
+/// or the body.
 /// </summary>
 public sealed class EmbeddingsClient
 {
@@ -24,24 +24,19 @@ public sealed class EmbeddingsClient
 
     private readonly HttpClient _http;
     private readonly Func<Uri> _endpoint;
-    private readonly Func<byte[]?>? _keySource;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly TimeSpan _timeout;
 
-    /// <param name="endpoint">Read per call (the local port may change); must be api.openai.com or loopback.</param>
-    /// <param name="keySource">A fresh key buffer per call, zeroed after use; null for a local server.</param>
-    public EmbeddingsClient(HttpMessageHandler handler, Func<Uri> endpoint, Func<byte[]?>? keySource,
+    /// <param name="endpoint">Read per call (the local port may change); must be <c>http://127.0.0.1</c>.</param>
+    public EmbeddingsClient(HttpMessageHandler handler, Func<Uri> endpoint,
         Func<TimeSpan, CancellationToken, Task>? delay = null, TimeSpan? timeout = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
         _endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
-        _keySource = keySource;
         _http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
         _delay = delay ?? Task.Delay;
         _timeout = timeout ?? TimeSpan.FromSeconds(30);
     }
-
-    public static readonly Uri OpenAiEndpoint = new("https://api.openai.com/v1/embeddings");
 
     public static Uri LocalEndpoint(int port) => port is >= 1024 and <= 65535
         ? new Uri($"http://127.0.0.1:{port}/v1/embeddings")
@@ -56,22 +51,14 @@ public sealed class EmbeddingsClient
         if (texts.Count > MaxBatch) throw new ArgumentException($"At most {MaxBatch} texts per call.", nameof(texts));
 
         var endpoint = _endpoint();
-        if (!(endpoint == OpenAiEndpoint || (endpoint.IsLoopback && endpoint.Scheme == Uri.UriSchemeHttp && endpoint.Host == "127.0.0.1")))
-            throw new LlmException(LlmErrorKind.NotConfigured, "Embeddings go only to OpenAI or to 127.0.0.1.");
+        if (!(endpoint.IsLoopback && endpoint.Scheme == Uri.UriSchemeHttp && endpoint.Host == "127.0.0.1"))
+            throw new LlmException(LlmErrorKind.NotConfigured, "Embeddings go only to 127.0.0.1.");
         var body = BuildBody(model, texts);
 
         for (var attempt = 0; ; attempt++)
         {
             ct.ThrowIfCancellationRequested();
             using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
-            if (_keySource is not null)
-            {
-                var key = _keySource();
-                if (key is null || key.Length == 0)
-                    throw new LlmException(LlmErrorKind.NotConfigured, "The embeddings API key is not configured.");
-                try { message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Encoding.UTF8.GetString(key)); }
-                finally { Array.Clear(key); }
-            }
             message.Content = new ByteArrayContent(body);
             message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
@@ -179,22 +166,19 @@ public sealed class EmbeddingsClient
 }
 
 /// <summary>
-/// The embeddings provider picked in Configurações (<see cref="LlmSettings.EmbeddingChoice"/>), read on every call: OpenAI
-/// <c>text-embedding-3-small</c> with the OpenAI key, or a model served on 127.0.0.1 (the local port of the Matcher). Off
-/// when nothing was chosen.
+/// The embeddings provider picked in Configurações (<see cref="LlmSettings.EmbeddingChoice"/>), read on every call: a
+/// model served on 127.0.0.1 (the local port of the Matcher). Off when nothing was chosen.
 /// </summary>
 public sealed class ConfiguredEmbeddingProvider : IEmbeddingProvider
 {
     private readonly LlmSettings _settings;
-    private readonly EmbeddingsClient _openAi;
     private readonly EmbeddingsClient _local;
 
     public ConfiguredEmbeddingProvider(LlmSettings settings, HttpMessageHandler handler,
         Func<TimeSpan, CancellationToken, Task>? delay = null, TimeSpan? timeout = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-        _openAi = new EmbeddingsClient(handler, () => EmbeddingsClient.OpenAiEndpoint, () => settings.ReadKey(LlmProviderKind.OpenAI), delay, timeout);
-        _local = new EmbeddingsClient(handler, () => EmbeddingsClient.LocalEndpoint(settings.LocalPort), null, delay, timeout);
+        _local = new EmbeddingsClient(handler, () => EmbeddingsClient.LocalEndpoint(settings.LocalPort), delay, timeout);
     }
 
     public string? Model => _settings.EmbeddingChoice is { } c ? LlmSettings.EmbeddingModelId(c) : null;
@@ -207,6 +191,6 @@ public sealed class ConfiguredEmbeddingProvider : IEmbeddingProvider
     {
         var choice = _settings.EmbeddingChoice
             ?? throw new LlmException(LlmErrorKind.NotConfigured, "Embeddings are off.");
-        return (choice.Provider == LlmProviderKind.Local ? _local : _openAi).EmbedAsync(choice.Model, texts, cancellationToken);
+        return _local.EmbedAsync(choice.Model, texts, cancellationToken);
     }
 }

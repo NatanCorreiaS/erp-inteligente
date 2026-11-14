@@ -40,15 +40,15 @@ public sealed class OperationsViewModelTests
     {
         using var app = new TestApp();
         var joao = await app.LoginAsync("op.joao");
-        app.Host.UsageLog.Record(joao, new LlmUsageEntry(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeStrongModel), 3, 12_000, 2_000, "proposals"));
-        app.Host.UsageLog.Record(joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeFastModel), 1, 1_500, 150, "recipe"));
+        app.Host.UsageLog.Record(joao, new LlmUsageEntry(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel), 3, 12_000, 2_000, "proposals"));
+        app.Host.UsageLog.Record(joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), 1, 1_500, 150, "recipe"));
 
         var page = await PageAsync<CostsViewModel>(app, "sup.maria", "Costs");
         for (var i = 0; i < 50 && page.IsEmpty; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
 
         Assert.Equal("2", page.Totals.Single(t => t.Label == "Pedidos").Value);
         Assert.Equal("50%", page.Totals.Single(t => t.Label == "Resolvidos por receita").Value.Replace(" ", "").Replace(" ", ""));
-        Assert.Contains(page.Totals, t => t.Label.StartsWith("Custo estimado (US$)"));
+        Assert.Contains(page.Totals, t => t.Label.StartsWith("Custo estimado (¥)"));
         Assert.Equal(2, page.Lines.Count);
         Assert.Equal("Planejamento", page.Lines[0].Role);
     }

@@ -279,9 +279,9 @@ Tabela `memories` no SQLite:
 |-------|---------|
 | Fontes | Procedimentos e políticas do armazém (`knowledge/*.md`), `SKILL.md` das skills e descrições de receitas |
 | Chunking | Um trecho por seção `##` do Markdown, com o título do documento e da seção no início do trecho; seções acima de ~500 tokens são divididas com sobreposição de ~50 tokens |
-| Embeddings | Escolhidos pelo administrador em Configurações ("Busca por significado"), desligados por padrão: `text-embedding-3-small` (OpenAI, 1.536 dimensões, com a chave da OpenAI) ou um modelo local em `127.0.0.1` (`nexus-embed`, servido por `tools/finetune/serve_local.py` com `paraphrase-multilingual-MiniLM-L12-v2`, 384 dimensões). Anthropic e DeepSeek não oferecem API de embeddings. Cada vetor guarda o modelo (`provedor:modelo`): trocar de modelo gera todos de novo, e vetores de modelos diferentes nunca são comparados |
+| Embeddings | Escolhidos pelo administrador em Configurações ("Busca por significado"), desligados por padrão: um modelo local em `127.0.0.1` (`nexus-embed`, servido por `tools/finetune/serve_local.py` com `paraphrase-multilingual-MiniLM-L12-v2`, 384 dimensões). A DeepSeek não oferece API de embeddings. Cada vetor guarda o modelo (`provedor:modelo`): trocar de modelo gera todos de novo, e vetores de modelos diferentes nunca são comparados |
 | Banco vetorial | `knowledge_embeddings` (migração 009): um vetor float32 por trecho, ligado a `knowledge_chunks` (sai junto com o trecho, por trigger). A distância é calculada pelo `sqlite-vec` (`vec_distance_cosine`, NuGet `sqlite-vec`), carregado só na conexão da aplicação; sem a extensão, o app calcula o cosseno em C# com o mesmo resultado. **Desvio do plano original:** tabela comum em vez da virtual `vec0`, porque com 22 documentos (60 trechos) a varredura exata basta e o arquivo continua legível sem a extensão. A `vec0` fica para quando o volume pedir índice |
-| Busca | Híbrida quando há embeddings: top-20 do FTS5/BM25 (título com peso 2) + top-20 por cosseno, combinados por *Reciprocal Rank Fusion* (soma de 1 / (60 + posição)). Um trecho achado só pelo significado precisa de uma similaridade mínima, maior no contexto automático do que em `search_knowledge` (por modelo: OpenAI 0,30 e 0,50; local 0,40 e 0,55, medidos nos 22 documentos). A pergunta vai ao provedor mascarada (`SensitiveDataRedactor`), com limite de 5 s; sem embeddings ou com falha, a busca é exatamente a BM25 |
+| Busca | Híbrida quando há embeddings: top-20 do FTS5/BM25 (título com peso 2) + top-20 por cosseno, combinados por *Reciprocal Rank Fusion* (soma de 1 / (60 + posição)). Um trecho achado só pelo significado precisa de uma similaridade mínima, maior no contexto automático do que em `search_knowledge` (0,40 e 0,55, medidos nos 22 documentos). A pergunta vai ao servidor de embeddings mascarada (`SensitiveDataRedactor`), com limite de 5 s; sem embeddings ou com falha, a busca é exatamente a BM25 |
 | Atualização | Os documentos vêm embutidos no app e são indexados na abertura (`KnowledgeIndexer`); cada trecho guarda o SHA-256 e só trechos alterados são regravados. Os vetores que faltam (trecho novo, alterado ou modelo trocado) são gerados em segundo plano na abertura, ao escolher o provedor e pelo botão "Indexar procedimentos" (`KnowledgeVectorIndex`) |
 
 Os trechos recuperados entram no prompt **delimitados como dados de referência**, com o caminho do documento de origem, e nunca como instruções (seção 12.8).
@@ -323,25 +323,24 @@ operacoes: [create_inbound_order, receive_goods, cancel_inbound_order]
 
 ## 10. Provedores de LLM
 
-- Interface única `ILlmProvider` (chat com tool calling) com adaptadores para **Claude**, **OpenAI** e **DeepSeek**. A API da DeepSeek é compatível com a da OpenAI.
-- **Estado (feature 3):** só a DeepSeek está implementada (`Core/Llm/DeepSeekProvider`), sem streaming, porque a UI mostra a resposta completa.
+- Interface única `ILlmProvider` (chat com tool calling). O único provedor externo é a **DeepSeek** (decisão de 2026-11-14); o outro adaptador é o do modelo local, que usa o mesmo formato de *chat completions*.
+- **Estado (feature 3):** a DeepSeek está implementada (`Core/Llm/DeepSeekProvider`), sem streaming, porque a UI mostra a resposta completa.
   - **Endereço:** fixo no código (`https://api.deepseek.com`), só HTTPS e sem seguir redirecionamentos, para a chave não poder ir a outro host.
   - **Tempo e tentativas:** 60 s por tentativa e até 2 novas tentativas, só para 429 e 5xx.
   - **Raciocínio:** no modo de raciocínio da DeepSeek, o `reasoning_content` de cada resposta é devolvido nas chamadas seguintes, como a API exige quando há ferramentas.
   - **Modelos:** `deepseek-v4-pro` (padrão) e `deepseek-flash`, escolhidos em Configurações.
 - **Modelo por papel:** um modelo barato para identificar receitas e extrair parâmetros, e um modelo forte para planejar e tratar exceções. Ambos são configuráveis.
-- **Estado (feature 8):** os três provedores e o modelo local estão implementados (`Core/Llm`).
-  - **Claude:** `ClaudeProvider` usa o SDK oficial `Anthropic` (NuGet), sem *streaming*. A chave sai do cofre a cada chamada e só existe no cliente daquela chamada; o transporte não segue redirecionamentos. Os blocos da resposta, incluindo o *thinking* assinado, voltam inalterados no laço de ferramentas, e resultados de ferramenta seguidos vão numa só mensagem. Não envia temperatura nem configuração de *thinking*: os modelos atuais recusam esses parâmetros, e o padrão é *thinking* adaptativo. Erros viram `LlmException` genérica, sem a chave.
-  - **OpenAI:** `OpenAiProvider`, com o mesmo cliente de *chat completions* da DeepSeek (`ChatCompletionsProvider`), endereço fixo e `max_completion_tokens`.
+- **Estado (feature 8):** a DeepSeek e o modelo local estão implementados (`Core/Llm`), sobre o mesmo cliente de *chat completions* (`ChatCompletionsProvider`).
+  - **Cache de prompt:** a DeepSeek faz o cache do prefixo do prompt sozinha; o cliente lê `prompt_cache_hit_tokens` da resposta e o painel de custos cobra essa parte a 10% do preço de entrada.
   - **Modelo local:** `LocalProvider` fala só com `http://127.0.0.1:porta/v1/chat/completions`, sem chave, e só pode servir ao Matcher.
   - **Roteamento:** `LlmRouter` envia cada pedido ao adaptador de `LlmRequest.Provider`. O Planner usa a escolha do papel `Planner`, e o Recipe Matcher a do papel `Matcher`.
-  - **Configuração:** em Configurações, o administrador (`user.manage`) guarda uma chave por provedor (`llm.deepseek.key`, `llm.claude.key`, `llm.openai.key` no cofre do SO), escolhe provedor e modelo de cada papel e a porta do modelo local. Tudo é auditado sem o valor da chave. O padrão é DeepSeek nos dois papéis.
+  - **Configuração:** em Configurações, o administrador (`user.manage`) guarda a chave da DeepSeek (`llm.deepseek.key` no cofre do SO), escolhe o modelo de cada papel e a porta do modelo local. Tudo é auditado sem o valor da chave. O padrão é DeepSeek nos dois papéis.
 
 | Papel | Modelo padrão | Alternativas suportadas |
 |-------|---------------|-------------------------|
-| Planner | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Claude Opus 5.5, `deepseek-v4-pro`, modelos da OpenAI |
-| Receitas e extração de parâmetros | Claude Haiku 5.5 (`claude-haiku-5-5`) ou o modelo ajustado por fine-tuning (seção 10.1) | `deepseek-flash` |
-| Embeddings | `text-embedding-3-small` | Modelo de embeddings local |
+| Planner | `deepseek-v4-pro` | `deepseek-flash` |
+| Receitas e extração de parâmetros | `deepseek-flash` | `deepseek-v4-pro` ou o modelo ajustado por fine-tuning (seção 10.1) |
+| Embeddings | Desligados (só BM25) | Modelo de embeddings local (`nexus-embed`) |
 
 A justificativa e o custo por 1.000 usos estão em [`IA.md`](IA.md).
 
@@ -359,8 +358,8 @@ Experimento para reduzir custo e dependência de rede na etapa mais frequente: t
 | Dados | ~500 pedidos fictícios gerados a partir das receitas e do catálogo de teste, com variações de escrita, erros de digitação e pedidos fora do escopo; anotados e revisados pelo grupo; divisão 80/20 |
 | Modelo base | Modelo aberto pequeno (classe 1–3 bilhões de parâmetros, ex.: Qwen2.5-1.5B-Instruct) com LoRA, rodando localmente |
 | Métricas | *Exact match* do JSON, F1 por campo de parâmetro, taxa de JSON válido e taxa de acerto em "nenhuma receita" |
-| Comparação | Mesmo conjunto de teste com Claude Haiku 5.5 em *few-shot*; o modelo ajustado só substitui o Haiku se empatar ou superar no *exact match* |
-| Implementação (feature 8) | `tools/finetune`: `generate_dataset.py` (500 exemplos determinísticos, com o prompt `Core/Recipes/Prompts/matcher.md` que o app embute), `evaluate.py` (métricas e regra de adoção), `predict_claude.py` (linha de base), `train_lora.py` e `predict_local.py`. Adotado, o modelo é escolhido como "Modelo local" do papel Matcher em Configurações |
+| Comparação | Mesmo conjunto de teste com `deepseek-flash` em *few-shot*; o modelo ajustado só o substitui se empatar ou superar no *exact match* |
+| Implementação (feature 8) | `tools/finetune`: `generate_dataset.py` (500 exemplos determinísticos, com o prompt `Core/Recipes/Prompts/matcher.md` que o app embute), `evaluate.py` (métricas e regra de adoção), `predict_deepseek.py` (linha de base), `train_lora.py` e `predict_local.py`. Adotado, o modelo é escolhido como "Modelo local" do papel Matcher em Configurações |
 
 ---
 
@@ -422,7 +421,7 @@ A classificação coluna por coluna está em [`SEGURANCA_DADOS.md`](SEGURANCA_DA
 
 ### 12.4 Proteção em trânsito e minimização
 
-- Chamadas aos provedores de LLM e de embeddings só por HTTPS (TLS 1.2 ou superior).
+- Chamadas à DeepSeek só por HTTPS (TLS 1.2 ou superior); o modelo local e os embeddings ficam em `127.0.0.1`.
 - O contexto enviado ao LLM é montado **somente** com dados das views `v_ai_*`, trechos do RAG e memórias filtradas. Dados sensíveis nunca saem da máquina.
 - Logs técnicos passam por um filtro que remove padrões de CPF, CNPJ, e-mail, telefone e chaves de API.
 

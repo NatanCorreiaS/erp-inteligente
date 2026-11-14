@@ -90,23 +90,22 @@ public sealed class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task Administrator_keeps_a_key_per_provider_and_picks_a_model_per_role()
+    public async Task Administrator_keeps_the_deepseek_key_and_picks_a_model_per_role()
     {
         var vm = await SettingsFor("adm.carlos");
-        Assert.Equal(["DeepSeek", "Claude (Anthropic)", "OpenAI"], vm.ProviderRows.Select(r => r.Name));
+        Assert.Equal(["DeepSeek"], vm.ProviderRows.Select(r => r.Name));
+        Assert.Equal([LlmProviderKind.DeepSeek], vm.KeyProviders.Select(p => p.Kind));
 
-        vm.SelectedKeyProvider = vm.KeyProviders.Single(p => p.Kind == LlmProviderKind.Claude);
-        vm.ApiKey = "sk-ant-test-0123456789";
+        vm.ApiKey = "sk-nexus-test-0123456789";
         await vm.SaveKeyCommand.ExecuteAsync(null);
-        Assert.True(_app.Host.LlmSettings.IsConfiguredFor(LlmProviderKind.Claude));
-        Assert.False(_app.Host.LlmSettings.IsConfigured); // DeepSeek's key is another entry
-        Assert.Equal(1, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'llm.key.set' AND target = 'llm:claude'"));
+        Assert.True(_app.Host.LlmSettings.IsConfigured);
+        Assert.Equal(1, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'llm.key.set' AND target = 'llm:deepseek'"));
 
-        vm.PlannerProvider = vm.PlannerProviders.Single(p => p.Kind == LlmProviderKind.Claude);
+        Assert.Equal(LlmSettings.ModelsFor(LlmProviderKind.DeepSeek), vm.PlannerModels);
+        vm.PlannerModel = LlmSettings.FastModel;
         for (var i = 0; i < 50 && vm.IsWorking; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
-        Assert.Equal(LlmSettings.ModelsFor(LlmProviderKind.Claude), vm.PlannerModels);
-        Assert.Equal(new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeStrongModel), _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner));
-        Assert.Contains("usada em planejamento", vm.ProviderRows.Single(r => r.Name == "Claude (Anthropic)").StatusText);
+        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner));
+        Assert.Contains("usada em planejamento", vm.ProviderRows.Single(r => r.Name == "DeepSeek").StatusText);
 
         vm.MatcherProvider = vm.MatcherProviders.Single(p => p.Kind == LlmProviderKind.Local);
         for (var i = 0; i < 50 && vm.IsWorking; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
@@ -120,19 +119,21 @@ public sealed class SettingsViewModelTests : IDisposable
         await vm.SaveLocalPortCommand.ExecuteAsync(null);
         Assert.Equal(8099, _app.Host.LlmSettings.LocalPort);
         Assert.Equal(2, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'llm.model.set'"));
-        Assert.Equal(0, Count("SELECT COUNT(*) FROM audit_log WHERE COALESCE(details_json, '') LIKE '%sk-ant-test%'"));
+        Assert.Equal(0, Count("SELECT COUNT(*) FROM audit_log WHERE COALESCE(details_json, '') LIKE '%sk-nexus-test%'"));
     }
 
     [Fact]
     public async Task Other_roles_cannot_change_the_model_of_a_role()
     {
         var vm = await SettingsFor("sup.maria");
-        vm.PlannerProvider = vm.PlannerProviders.Single(p => p.Kind == LlmProviderKind.Claude);
+        vm.PlannerModel = LlmSettings.FastModel;
+        vm.MatcherProvider = vm.MatcherProviders.Single(p => p.Kind == LlmProviderKind.Local);
         await Task.Delay(50, TestContext.Current.CancellationToken);
-        Assert.Equal(LlmProviderKind.DeepSeek, _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner).Provider);
+        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel), _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner));
+        Assert.Equal(LlmProviderKind.DeepSeek, _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Matcher).Provider);
         var maria = await _app.LoginAsync("sup.maria");
         Assert.Throws<PolicyDeniedException>(() => _app.Host.LlmSettingsService.SetChoice(maria, LlmUseRole.Planner,
-            new LlmChoice(LlmProviderKind.Claude, LlmSettings.ClaudeStrongModel)));
+            new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel)));
     }
 
     [Fact]

@@ -1025,9 +1025,9 @@ class MigrationTo10Tests(unittest.TestCase):
         for conn in (self.fresh, self.migrated):
             with self.assertRaises(sqlite3.IntegrityError):
                 conn.execute("INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, "
-                             "completion_tokens, result, cache_write_tokens) VALUES ('t', 'planner', 'claude', 'm', 1, 1, 1, 'answer', -5)")
+                             "completion_tokens, result, cache_write_tokens) VALUES ('t', 'planner', 'deepseek', 'm', 1, 1, 1, 'answer', -5)")
             uid = conn.execute("INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, "
-                               "completion_tokens, result) VALUES ('t', 'planner', 'claude', 'm', 1, 1, 1, 'answer')").lastrowid
+                               "completion_tokens, result) VALUES ('t', 'planner', 'deepseek', 'm', 1, 1, 1, 'answer')").lastrowid
             with self.assertRaisesRegex(sqlite3.DatabaseError, "DENY"):
                 conn.execute("UPDATE llm_usage SET cache_read_tokens = 1 WHERE id = ?", (uid,))
 
@@ -1074,7 +1074,7 @@ class LlmUsageTests(DatabaseTestCase):
 
     def add(self, **kw):
         row = {"occurred_at": "2026-11-11T10:00:00Z", "user_id": 1, "warehouse_id": 1, "role": "planner",
-               "provider": "claude", "model": "claude-sonnet-5-5", "calls": 3, "prompt_tokens": 12000,
+               "provider": "deepseek", "model": "deepseek-v4-pro", "calls": 3, "prompt_tokens": 12000,
                "completion_tokens": 2000, "result": "proposals"}
         row.update(kw)
         cols = ", ".join(row)

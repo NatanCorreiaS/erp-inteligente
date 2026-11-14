@@ -293,7 +293,7 @@ public sealed class MigrationTests : IDisposable
         Assert.Equal(4L, Scalar(c, "SELECT count(*) FROM audit_log"));
         Assert.True(AuditVerifier.Verify(c).IsValid);
         Exec(c, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result) " +
-                "VALUES ('2026-11-11T10:00:00Z', 'planner', 'claude', 'claude-sonnet-5-5', 1, 10, 5, 'answer')");
+                "VALUES ('2026-11-11T10:00:00Z', 'planner', 'deepseek', 'deepseek-v4-pro', 1, 10, 5, 'answer')");
         Assert.Contains("DENY", Assert.Throws<SqliteException>(() => Exec(c, "DELETE FROM llm_usage")).Message);
     }
 
@@ -325,11 +325,11 @@ public sealed class MigrationTests : IDisposable
         AssertVersion10Schema(c);
         Assert.True(AuditVerifier.Verify(c).IsValid);
         Exec(c, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result) " +
-                "VALUES ('2026-11-11T10:00:00Z', 'planner', 'claude', 'claude-sonnet-5-5', 1, 10, 5, 'answer')");
+                "VALUES ('2026-11-11T10:00:00Z', 'planner', 'deepseek', 'deepseek-v4-pro', 1, 10, 5, 'answer')");
         Assert.Equal(0L, Scalar(c, "SELECT cache_read_tokens + cache_write_tokens FROM llm_usage"));
         Assert.Contains("CHECK", Assert.Throws<SqliteException>(() =>
             Exec(c, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result, cache_read_tokens) " +
-                    "VALUES ('2026-11-11T10:00:00Z', 'planner', 'claude', 'm', 1, 10, 5, 'answer', -1)")).Message);
+                    "VALUES ('2026-11-11T10:00:00Z', 'planner', 'deepseek', 'm', 1, 10, 5, 'answer', -1)")).Message);
     }
 
     [Fact]

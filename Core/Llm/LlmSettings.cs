@@ -17,11 +17,6 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
     public const string ModelEntry = "llm.deepseek.model";
     public const string StrongModel = "deepseek-v4-pro";
     public const string FastModel = "deepseek-flash";
-    public const string ClaudeStrongModel = "claude-sonnet-5-5";
-    public const string ClaudeFastModel = "claude-haiku-5-5";
-    public const string ClaudeTopModel = "claude-opus-5-5";
-    public const string OpenAiStrongModel = "gpt-5";
-    public const string OpenAiFastModel = "gpt-5-mini";
     public const string LocalModel = "nexus-matcher";
     public const int DefaultLocalPort = 8080;
     public const int MinKeyLength = 8;
@@ -30,18 +25,14 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
     private const string LocalPortEntry = "llm.local.port";
     private const string EmbeddingEntry = "llm.embedding";
 
-    /// <summary>OpenAI embeddings model of the RAG (references/IA.md, section 3): 1,536 dimensions.</summary>
-    public const string OpenAiEmbeddingModel = "text-embedding-3-small";
-
     /// <summary>Alias of the embeddings model served on 127.0.0.1 by tools/finetune/serve_local.py.</summary>
     public const string LocalEmbeddingModel = "nexus-embed";
 
-    /// <summary>Providers that can embed text: Anthropic and DeepSeek have no embeddings API.</summary>
-    public static IReadOnlyList<LlmProviderKind> EmbeddingProviders { get; } = [LlmProviderKind.OpenAI, LlmProviderKind.Local];
+    /// <summary>Providers that can embed text: DeepSeek has no embeddings API, so only the local server does.</summary>
+    public static IReadOnlyList<LlmProviderKind> EmbeddingProviders { get; } = [LlmProviderKind.Local];
 
     public static string EmbeddingModelFor(LlmProviderKind provider) => provider switch
     {
-        LlmProviderKind.OpenAI => OpenAiEmbeddingModel,
         LlmProviderKind.Local => LocalEmbeddingModel,
         _ => throw new ArgumentException("This provider has no embeddings.", nameof(provider)),
     };
@@ -50,12 +41,11 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
     public static string EmbeddingModelId(LlmChoice choice) => Format(choice);
 
     /// <summary>
-    /// Cosine thresholds per model. text-embedding-3-small spreads similarities widely (unrelated Portuguese texts around 0.1
-    /// to 0.25); the local model (paraphrase-multilingual-MiniLM-L12-v2) was measured on the 22 documents of knowledge/.
+    /// Cosine thresholds of the embeddings model. The local model (paraphrase-multilingual-MiniLM-L12-v2) was measured on the
+    /// 22 documents of knowledge/.
     /// </summary>
-    public static Knowledge.EmbeddingThresholds EmbeddingThresholdsFor(LlmChoice choice) => choice.Provider == LlmProviderKind.Local
-        ? new Knowledge.EmbeddingThresholds(Search: 0.40, Context: 0.55)
-        : new Knowledge.EmbeddingThresholds(Search: 0.30, Context: 0.50);
+    public static Knowledge.EmbeddingThresholds EmbeddingThresholdsFor(LlmChoice choice) =>
+        new(Search: 0.40, Context: 0.55);
 
     public static IReadOnlyList<string> SupportedModels { get; } = [StrongModel, FastModel];
 
@@ -63,18 +53,16 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
     public static IReadOnlyList<string> ModelsFor(LlmProviderKind provider) => provider switch
     {
         LlmProviderKind.DeepSeek => SupportedModels,
-        LlmProviderKind.Claude => [ClaudeStrongModel, ClaudeTopModel, ClaudeFastModel],
-        LlmProviderKind.OpenAI => [OpenAiStrongModel, OpenAiFastModel],
         _ => [LocalModel],
     };
 
     /// <summary>Providers that may serve a role: the local fine-tuned model only recognises recipes, it never plans.</summary>
     public static IReadOnlyList<LlmProviderKind> ProvidersFor(LlmUseRole role) => role == LlmUseRole.Planner
-        ? [LlmProviderKind.DeepSeek, LlmProviderKind.Claude, LlmProviderKind.OpenAI]
-        : [LlmProviderKind.DeepSeek, LlmProviderKind.Claude, LlmProviderKind.OpenAI, LlmProviderKind.Local];
+        ? [LlmProviderKind.DeepSeek]
+        : [LlmProviderKind.DeepSeek, LlmProviderKind.Local];
 
     /// <summary>Providers that need an API key (the local server needs none).</summary>
-    public static IReadOnlyList<LlmProviderKind> KeyedProviders { get; } = [LlmProviderKind.DeepSeek, LlmProviderKind.Claude, LlmProviderKind.OpenAI];
+    public static IReadOnlyList<LlmProviderKind> KeyedProviders { get; } = [LlmProviderKind.DeepSeek];
 
     public static bool IsSupported(LlmChoice choice, LlmUseRole role) =>
         ProvidersFor(role).Contains(choice.Provider) && ModelsFor(choice.Provider).Contains(choice.Model);
@@ -128,8 +116,6 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
     private static string KeyName(LlmProviderKind provider) => provider switch
     {
         LlmProviderKind.DeepSeek => KeyEntry,
-        LlmProviderKind.Claude => "llm.claude.key",
-        LlmProviderKind.OpenAI => "llm.openai.key",
         _ => throw new ArgumentException("The local model has no key.", nameof(provider)),
     };
 
@@ -177,7 +163,7 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
             Model = choice.Model;
     }
 
-    /// <summary>Port of the local OpenAI-compatible server (loopback only).</summary>
+    /// <summary>Port of the local model server (loopback only).</summary>
     public int LocalPort
     {
         get => ReadText(LocalPortEntry) is { } text && int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var port)
@@ -214,8 +200,6 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
     public static string ProviderName(LlmProviderKind provider) => provider switch
     {
         LlmProviderKind.DeepSeek => "DeepSeek",
-        LlmProviderKind.Claude => "Claude (Anthropic)",
-        LlmProviderKind.OpenAI => "OpenAI",
         _ => "Modelo local",
     };
 

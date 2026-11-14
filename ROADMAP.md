@@ -24,7 +24,7 @@ DSL JSON versionada, Validator (JSON Schema + regras de negócio), Simulator (di
 ### 3. Planner com tool calling ✅
 `ILlmProvider` com o primeiro adaptador, ferramentas de leitura sobre as views `v_ai_*`, `propose_plan` com devolução de erros estruturados e limite de tentativas, e tela de chat com prévia do plano e confirmação.
 *Por que junto:* o Planner só tem valor com as ferramentas de leitura e a tela de chat que o alimentam e exibem seu resultado.
-*Estado:* pronto, só com a **DeepSeek**. Claude e OpenAI ficam para a feature 8. Redesenhado em 2026-11-08 para o modo proativo: 8 ferramentas de leitura e pesquisa, `propose_plan` com até 3 alternativas, `offer_options` com botões de próximo passo, e formulários do Novo plano gerados do catálogo.
+*Estado:* pronto, com a **DeepSeek**. Redesenhado em 2026-11-08 para o modo proativo: 8 ferramentas de leitura e pesquisa, `propose_plan` com até 3 alternativas, `offer_options` com botões de próximo passo, e formulários do Novo plano gerados do catálogo.
 - Código em `Core/Llm` (provedor, chave no cofre do SO) e `Core/Planner` (laço de ferramentas, prompt de sistema).
 - A chave é digitada pelo administrador em Configurações.
 - O plano da IA volta como proposta: só é gravado quando quem pediu confirma.
@@ -53,9 +53,9 @@ Tabela `memories` com filtro de proteção, busca FTS5 por escopo e confiança; 
   - migração 009 (schema na versão 9): `knowledge_embeddings`, um vetor float32 por trecho, que sai junto com o trecho;
   - `Core/Knowledge/KnowledgeVectorIndex` gera só os vetores que faltam (trecho novo ou alterado, ou modelo trocado) e calcula a distância pelo `sqlite-vec` (NuGet oficial), com o mesmo cálculo em C# se a extensão não carregar;
   - `KnowledgeRetriever.SearchHybridAsync` funde o top-20 do BM25 e o top-20 por cosseno por RRF; o contexto automático e `search_knowledge` usam a busca híbrida, e um trecho achado só pelo significado precisa passar do limiar do modelo;
-  - em Configurações, "Busca por significado": desligada (padrão), OpenAI `text-embedding-3-small` ou o modelo local `nexus-embed` (servido por `tools/finetune/serve_local.py`), com o botão "Indexar procedimentos";
+  - em Configurações, "Busca por significado": desligada (padrão) ou o modelo local `nexus-embed` (servido por `tools/finetune/serve_local.py`), com o botão "Indexar procedimentos";
   - desvio: tabela comum em vez da virtual `vec0` (22 documentos não pedem índice, e o arquivo segue legível sem a extensão).
-- **Pendente (depende de dados do usuário):** medir a busca com a OpenAI, que precisa da chave dela. O modelo local foi medido nos 22 documentos e define os limiares dele.
+- O modelo local foi medido nos 22 documentos e define os limiares da busca.
 
 ## Segurança e economia
 
@@ -81,25 +81,24 @@ Promoção de planos repetidos a receitas parametrizadas, Recipe Matcher com mod
 
 ## Evolução
 
-### 8. Multi-provedor e fine-tuning ✅
-Adaptadores Claude e OpenAI (a DeepSeek entrou na feature 3), modelo por papel configurável e experimento de fine-tuning do Matcher, que só substitui o Haiku se empatar ou superar no *exact match*.
-*Estado:* código pronto em 2026-11-11; treino e medição do modelo local em 2026-11-12. Falta só a comparação com o Haiku, que depende da chave da Anthropic.
+### 8. Modelo por papel e fine-tuning ✅
+Modelo por papel configurável, adaptador do modelo local e experimento de fine-tuning do Matcher, que só substitui o `deepseek-flash` se empatar ou superar no *exact match*.
+*Estado:* código pronto em 2026-11-11; treino e medição do modelo local em 2026-11-12. Em 2026-11-14 o projeto ficou só com a DeepSeek como provedor externo. Falta só a comparação com o `deepseek-flash`.
 - **Provedores:**
-  - Claude (Anthropic), pelo SDK oficial `Anthropic`, com o thinking assinado devolvido no laço de ferramentas;
-  - OpenAI (`max_completion_tokens`);
-  - modelo local (servidor compatível com OpenAI, só em `127.0.0.1`, sem chave).
-  - DeepSeek e OpenAI dividem o mesmo cliente de *chat completions*. Um roteador manda cada pedido ao provedor certo.
-- **Modelo por papel:** em Configurações, o administrador guarda uma chave por provedor e escolhe provedor e modelo do planejamento e do Matcher. O modelo local só serve ao Matcher. O padrão continua DeepSeek nos dois papéis, então quem não mexe nada não percebe a mudança.
+  - DeepSeek (feature 3), o único provedor externo;
+  - modelo local (servidor de *chat completions*, só em `127.0.0.1`, sem chave).
+  - Os dois dividem o mesmo cliente de *chat completions*. Um roteador manda cada pedido ao adaptador certo.
+- **Modelo por papel:** em Configurações, o administrador guarda a chave da DeepSeek e escolhe o modelo do planejamento e do Matcher. O modelo local só serve ao Matcher. O padrão é `deepseek-v4-pro` no planejamento e `deepseek-flash` no Matcher.
 - **Fine-tuning (`tools/finetune`):**
   - gerador do conjunto sintético (500 pedidos, 400/100, 15% fora do escopo, com o mesmo prompt de sistema do app);
-  - avaliação com a regra de adoção (empata ou supera o Haiku no *exact match* e tem ≥ 99% de JSON válido);
-  - linha de base com Haiku 5.5 *few-shot*, treino LoRA do Qwen2.5-1.5B-Instruct e previsões do modelo servido localmente.
+  - avaliação com a regra de adoção (empata ou supera o `deepseek-flash` no *exact match* e tem ≥ 99% de JSON válido);
+  - linha de base com `deepseek-flash` *few-shot* (`predict_deepseek.py`), treino LoRA do Qwen2.5-1.5B-Instruct e previsões do modelo servido localmente.
   - O Matcher aceita o formato de resposta do conjunto (`{intent, recipe, params}`).
 - **Medido:** treino de 3 h numa GTX 1660. No teste gerado, 100% em tudo. No conjunto escrito à mão (40 pedidos):
   - 80% de *exact match* e 30% de acerto em "nenhuma receita", porque o modelo inventa o valor que falta;
-  - com a nova checagem `RecipeGrounding` do app (cada valor precisa estar no pedido, para qualquer provedor), 92,5% e 80%.
+  - com a nova checagem `RecipeGrounding` do app (cada valor precisa estar no pedido, para qualquer modelo), 92,5% e 80%.
   - Detalhes no `IA.md`, seção 4.
-- **Pendente (depende da chave da Anthropic):** a linha de base com o Haiku nos dois conjuntos e a decisão de adoção; os comandos estão no `IA.md`, seção 4.
+- **Pendente (depende da chave da DeepSeek):** a linha de base com o `deepseek-flash` nos dois conjuntos e a decisão de adoção; os comandos estão no `IA.md`, seção 4.
 
 ### 9. Operação ✅
 Backup criptografado pela API do SQLite, job de manutenção de memórias, painel de auditoria e de custos de tokens, e instaladores por plataforma.
@@ -114,7 +113,7 @@ Backup criptografado pela API do SQLite, job de manutenção de memórias, paine
   - sem uso: da IA, nunca usadas, depois de 30 dias; da IA ou do sistema, paradas há 180 dias.
   - As do supervisor nunca são arquivadas pelo job, e nada é apagado.
 - **Consumo de tokens:** migração 008, tabela `llm_usage`, só inserção. O Planner e o Matcher gravam uma linha por pedido, com provedor, modelo, chamadas e tokens, nunca o texto.
-- **Cache de prompt (2026-11-11):** o adaptador do Claude marca o prompt de sistema (com as ferramentas) e a conversa para cache; a migração 010 guarda os tokens lidos e gravados no cache, e o painel cobra a leitura a 10% e a gravação a 125% da entrada.
+- **Cache de prompt (2026-11-11, só DeepSeek desde 2026-11-14):** a DeepSeek faz o cache do prefixo do prompt sozinha e informa os tokens lidos dele; a migração 010 guarda esses tokens, e o painel cobra a leitura a 10% da entrada.
 - **Telas (`audit.read`):**
   - **Auditoria:** filtros por categoria e por problemas, mais a verificação da cadeia;
   - **Custos de IA:** pedidos, % resolvida por receita, tokens por pedido e custo estimado por papel e modelo, com os preços do `IA.md`.
@@ -127,13 +126,14 @@ Os conjuntos da seção 5 do `IA.md`, versionados, e um executor que mede o RAG 
 - `tools/eval`: 50 pedidos com gabarito, 40 perguntas sobre `knowledge/`, 30 pedidos fora do escopo e 10 proativos ou sem direito, todos sobre os dados fictícios do seed.
 - `tools/Nexus.Eval`: cria um banco novo, roda o Planner real e grava o relatório (Markdown e JSON) em `tools/eval/results`. As chaves vêm só de variáveis de ambiente e ficam na memória do processo.
 - Medido: RAG com recall@4 de 100% (BM25 e híbrido); recall@1 de 80% no BM25 e 87,5% no híbrido com o modelo local.
-- **Pendente (depende da chave do usuário):** rodar os conjuntos que chamam o LLM e o RAG com a OpenAI; os comandos estão no `IA.md`, seção 5.
+- **Medido com a DeepSeek (2026-11-14):** planejamento com as operações do gabarito em 92% dos 50 pedidos (88% válidos na 1ª tentativa); 100% de recusas corretas nos 30 fora do escopo; 100% nos 10 proativos ou sem direito. Nas 40 perguntas, 97,5% das respostas têm o conteúdo esperado, mas só 15% citam o código do documento. Detalhes no `IA.md`, seção 5.
+- **Pendente:** o prompt de sistema não pede a citação da fonte; exigir e medir de novo.
 
 ## Resumo
 
 ```
 1 Núcleo + acesso → 2 Motor de planos → 3 Planner + chat → 4 Skills
-   → 5 Memória + RAG → 6 Defesas e ataques → 7 Receitas → 8 Multi-provedor + fine-tuning → 9 Operação → 10 Avaliação
+   → 5 Memória + RAG → 6 Defesas e ataques → 7 Receitas → 8 Modelo por papel + fine-tuning → 9 Operação → 10 Avaliação
 ```
 
 O MVP do [`CANVAS.md`](references/CANVAS.md) corresponde às features 1 a 3, às skills `recebimento` e `armazenagem` da 4, ao RAG da 5 e ao núcleo da 6. Receitas, fine-tuning, inventário e expedição ficam fora dele.
