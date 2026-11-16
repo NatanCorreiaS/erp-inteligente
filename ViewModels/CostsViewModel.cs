@@ -99,9 +99,9 @@ public sealed partial class CostsViewModel(IOperationsService operations) : Page
                 line.Cost is { } cost && line.Currency is { } currency ? LlmPrices.Format(cost, currency) : "sem preço"));
         OnPropertyChanged(nameof(IsEmpty));
 
-        var notes = new List<string> { "Tokens de entrada / saída. Custos estimados com os preços de referência (IA.md, seção 2); a DeepSeek cobra em ¥ e no pico." };
+        var notes = new List<string> { "Tokens de entrada / saída. Custos estimados com os preços de referência (IA.md, seção 2); preços da DeepSeek em dólar, no horário de pico (fora dele, metade)." };
         if (report.Lines.Any(l => l.CacheReadTokens > 0))
-            notes.Add("Entrada lida do cache de prompt custa 10% do preço de entrada; a gravada no cache, 125%.");
+            notes.Add("Entrada lida do cache de prompt tem preço próprio, bem menor que o da entrada comum; a DeepSeek não cobra a gravação no cache.");
         if (report.Unpriced > 0)
             notes.Add($"{report.Unpriced.ToString("N0", PtBr)} tokens são de modelos sem preço cadastrado e ficaram fora do custo.");
         Note = string.Join(" ", notes);

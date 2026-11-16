@@ -107,9 +107,8 @@ public sealed class LlmUsageLog(NexusDatabase database, TimeProvider time, Polic
                 var prompt = reader.GetInt64(6);
                 var completion = reader.GetInt64(7);
                 var cacheRead = reader.GetInt64(9);
-                var cacheWrite = reader.GetInt64(10);
                 var price = LlmPrices.For(provider, model);
-                decimal? cost = price is null ? null : LlmPrices.Cost(price, prompt, completion, cacheRead, cacheWrite);
+                decimal? cost = price is null ? null : LlmPrices.Cost(price, prompt, completion, cacheRead);
                 if (cost is { } value)
                     costs[price!.Currency] = costs.GetValueOrDefault(price.Currency) + value;
                 else
@@ -127,44 +126,38 @@ public sealed class LlmUsageLog(NexusDatabase database, TimeProvider time, Polic
     }
 }
 
-/// <summary>A price per million tokens.</summary>
-public sealed record LlmPrice(string Currency, decimal Input, decimal Output);
+/// <summary>A price per million tokens: input on a cache miss, output, and input read from the prompt cache.</summary>
+public sealed record LlmPrice(string Currency, decimal Input, decimal Output, decimal CacheRead);
 
 /// <summary>
-/// Prices per million tokens used for the estimates (references/IA.md, section 2, consulted on 2026-10-27: DeepSeek in
-/// ¥ at peak hours). Models without a published price there have none here: the panel shows their
+/// Prices per million tokens used for the estimates (references/IA.md, section 2, consulted on 2026-11-16: DeepSeek in
+/// US$ at peak hours; off-peak is half). Models without a published price there have none here: the panel shows their
 /// tokens without a cost instead of guessing. The local model costs nothing per token.
 /// </summary>
 public static class LlmPrices
 {
     private static readonly Dictionary<(LlmProviderKind, string), LlmPrice> Table = new()
     {
-        [(LlmProviderKind.DeepSeek, LlmSettings.StrongModel)] = new("CNY", 9.00m, 27.00m),
-        [(LlmProviderKind.DeepSeek, LlmSettings.FastModel)] = new("CNY", 2.00m, 8.00m),
-        [(LlmProviderKind.Local, LlmSettings.LocalModel)] = new("USD", 0m, 0m),
+        [(LlmProviderKind.DeepSeek, LlmSettings.StrongModel)] = new("USD", 1.32m, 3.96m, 0.044m),
+        [(LlmProviderKind.DeepSeek, LlmSettings.FastModel)] = new("USD", 0.30m, 1.20m, 0.006m),
+        [(LlmProviderKind.Local, LlmSettings.LocalModel)] = new("USD", 0m, 0m, 0m),
     };
 
     public static LlmPrice? For(LlmProviderKind provider, string model) => Table.GetValueOrDefault((provider, model));
 
-    /// <summary>Price of a cache read and of a cache write (5-minute cache), as a share of the input price.</summary>
-    public const decimal CacheReadShare = 0.10m;
-    public const decimal CacheWriteShare = 1.25m;
-
     /// <summary>
-    /// Cost of <paramref name="prompt"/> input tokens (of which <paramref name="cacheRead"/> were read from and
-    /// <paramref name="cacheWrite"/> written to the prompt cache) and <paramref name="completion"/> output tokens.
+    /// Cost of <paramref name="prompt"/> input tokens (of which <paramref name="cacheRead"/> were read from the prompt
+    /// cache) and <paramref name="completion"/> output tokens. DeepSeek does not bill cache writes.
     /// </summary>
-    public static decimal Cost(LlmPrice price, long prompt, long completion, long cacheRead = 0, long cacheWrite = 0)
+    public static decimal Cost(LlmPrice price, long prompt, long completion, long cacheRead = 0)
     {
-        var uncached = Math.Max(0, prompt - cacheRead - cacheWrite);
-        return (uncached * price.Input + cacheRead * price.Input * CacheReadShare + cacheWrite * price.Input * CacheWriteShare
-                + completion * price.Output) / 1_000_000m;
+        var uncached = Math.Max(0, prompt - cacheRead);
+        return (uncached * price.Input + cacheRead * price.CacheRead + completion * price.Output) / 1_000_000m;
     }
 
     public static string Symbol(string currency) => currency switch
     {
         "USD" => "US$",
-        "CNY" => "¥",
         _ => currency,
     };
 

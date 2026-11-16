@@ -33,11 +33,11 @@ Consultados em 27/10/2026, por 1 milhão de tokens:
 
 | Modelo | Entrada | Saída | Fonte |
 |--------|--------:|------:|-------|
-| `deepseek-v4-pro` | ¥ 9,00 | ¥ 27,00 | api-docs.deepseek.com, preço de pico, sem cache |
-| `deepseek-flash` | ¥ 2,00 | ¥ 8,00 | api-docs.deepseek.com, preço de pico, sem cache |
+| `deepseek-v4-pro` | US$ 1,32 | US$ 3,96 | api-docs.deepseek.com, preço de pico, cache miss |
+| `deepseek-flash` | US$ 0,30 | US$ 1,20 | api-docs.deepseek.com, preço de pico, cache miss |
 | `nexus-embed` e `nexus-matcher` (locais) | 0 | 0 | Rodam na máquina do usuário |
 
-A DeepSeek publica preços só em yuan (¥). Fora do horário de pico de Pequim, o preço cai pela metade.
+A DeepSeek publica os preços em dólar (US$). A leitura do cache de prompt tem preço próprio: US$ 0,006 por milhão no `deepseek-flash` e US$ 0,044 no `deepseek-v4-pro`. Fora do horário de pico (01h–04h e 06h–10h UTC, de segunda a sexta, fora feriados chineses), todos os preços caem pela metade. Consultados em 16/11/2026.
 
 ### Premissas de um "uso" (um pedido do operador)
 
@@ -49,7 +49,7 @@ A DeepSeek publica preços só em yuan (¥). Fora do horário de pico de Pequim,
 
 No início, 70% dos pedidos passam pelo planejamento e 30% por receitas. Com o uso, a meta é chegar a 40% e 60%.
 
-**Medição real (feature 9):** cada pedido grava seus tokens em `llm_usage`, e a tela Custos de IA mostra o custo estimado com os preços acima (DeepSeek em ¥ no pico; um modelo sem preço aqui aparece só com os tokens). É a fonte para refazer esta conta com números medidos.
+**Medição real (feature 9):** cada pedido grava seus tokens em `llm_usage`, e a tela Custos de IA mostra o custo estimado com os preços acima (DeepSeek em US$ no pico; um modelo sem preço aqui aparece só com os tokens). É a fonte para refazer esta conta com números medidos.
 
 **Premissas em revisão:** o modo proativo (2026-11-08) pode fazer mais consultas por pedido e até 3 propostas. A medição de 2026-11-14 (seção 5) deu 34.377 tokens por pedido de planejamento, contra os 14.000 das premissas acima. A conta abaixo ainda usa as premissas: refazê-la com a divisão entre entrada, cache e saída da tela Custos de IA antes de citar um custo real.
 
@@ -57,18 +57,18 @@ No início, 70% dos pedidos passam pelo planejamento e 30% por receitas. Com o u
 
 | Configuração | 70% planejamento | 40% planejamento |
 |--------------|-----------------:|-----------------:|
-| **`deepseek-flash` nos dois papéis (padrão, pico)** | **≈ ¥ 29,30** | **≈ ¥ 18,50** |
-| `deepseek-v4-pro` no planejamento + `deepseek-flash` nas receitas (pico) | ≈ ¥ 114,70 | ≈ ¥ 67,30 |
-| `deepseek-flash` sem receitas (100% planejamento, pico) | ≈ ¥ 40,00 | — |
+| **`deepseek-flash` nos dois papéis (padrão, pico)** | **≈ US$ 4,39** | **≈ US$ 2,78** |
+| `deepseek-v4-pro` no planejamento + `deepseek-flash` nas receitas (pico) | ≈ US$ 16,82 | ≈ US$ 9,88 |
+| `deepseek-flash` sem receitas (100% planejamento, pico) | ≈ US$ 6,00 | — |
 
 **Contas do padrão (70/30):**
-- 700 × (12.000 × 2 + 2.000 × 8) / 1.000.000 = ¥ 28,00
-- 300 × (1.500 × 2 + 150 × 8) / 1.000.000 = ¥ 1,26
+- 700 × (12.000 × 0,30 + 2.000 × 1,20) / 1.000.000 = US$ 4,20
+- 300 × (1.500 × 0,30 + 150 × 1,20) / 1.000.000 = US$ 0,19
 - Embeddings: sem custo (modelo local)
 
 **Leituras:**
 - As **receitas** são o que mais reduz o custo: sair de 70% para 40% de planejamento corta ~37% do gasto.
-- O **cache de prompt** (prompt de sistema + definições de ferramentas, que se repetem em todo pedido) não entrou na conta e reduz ainda mais o custo de entrada. **Estado (2026-11-14):** a DeepSeek faz o cache do prefixo do prompt sozinha e informa quantos tokens leu dele (`prompt_cache_hit_tokens`), então cada rodada do laço de ferramentas relê as anteriores do cache. Esses tokens voltam em `LlmUsage` e ficam em `llm_usage` (migração 010); o painel de custos cobra a leitura do cache a 10% do preço de entrada. A DeepSeek não cobra a gravação no cache, então a coluna de tokens gravados fica em zero.
+- O **cache de prompt** (prompt de sistema + definições de ferramentas, que se repetem em todo pedido) não entrou na conta e reduz ainda mais o custo de entrada. **Estado (2026-11-14):** a DeepSeek faz o cache do prefixo do prompt sozinha e informa quantos tokens leu dele (`prompt_cache_hit_tokens`), então cada rodada do laço de ferramentas relê as anteriores do cache. Esses tokens voltam em `LlmUsage` e ficam em `llm_usage` (migração 010); o painel de custos cobra a leitura do cache pelo preço próprio dela. A DeepSeek não cobra a gravação no cache, então a coluna de tokens gravados fica em zero.
 - O `deepseek-v4-pro` no planejamento custa ~4× mais. Fica como opção configurável para quem quiser mais qualidade no Planner, que é onde erros custam mais.
 
 ## 2.1 Skills sob demanda (feature 4)
@@ -134,15 +134,8 @@ Exemplo de par de treino:
   - um recebimento com lote, que a receita sem lote ignora.
   - Nos dois casos, o resultado continua sendo uma proposta que quem pediu confirma.
 - Latência: cerca de 6 s por pedido nessa GPU (transformers em fp16, sem quantização).
-- **Pendente (depende da chave da DeepSeek):** a linha de base com o `deepseek-flash` e a decisão de adoção.
 
-```bash
-DEEPSEEK_API_KEY=... python tools/finetune/predict_deepseek.py --data tools/finetune/data --out tools/finetune/data/pred_deepseek.jsonl
-DEEPSEEK_API_KEY=... python tools/finetune/predict_deepseek.py --data tools/finetune/data --split holdout --out tools/finetune/data/pred_deepseek_holdout.jsonl
-python tools/finetune/evaluate.py --gold tools/finetune/data/holdout.jsonl --pred tools/finetune/data/pred_local_holdout.jsonl --baseline tools/finetune/data/pred_deepseek_holdout.jsonl --guard
-```
-
-Recomendação do grupo enquanto isso: manter o Matcher no `deepseek-flash`. O modelo local é a opção para quem não quer enviar nada para fora. Ele vale a pena se, no conjunto escrito à mão e com a checagem, empatar com o `deepseek-flash`.
+Decisão do grupo: o Matcher fica no `deepseek-flash`. O modelo local é a opção para quem não quer enviar nada para fora.
 
 ## 5. Onde a IA pode errar e como medimos
 
@@ -169,21 +162,21 @@ Os conjuntos de avaliação são fictícios, versionados junto com o código e r
 
 As perguntas usam o vocabulário dos documentos, então o BM25 já acha o documento entre os 4 primeiros; o ganho da busca híbrida aparece na ordem (o certo em 1º lugar).
 
-**Conjuntos que chamam o LLM (2026-11-14):** `deepseek-v4-pro` no Planner (o padrão naquele momento) e `deepseek-flash` no Matcher, RAG só BM25. **Pendente:** repetir com o `deepseek-flash` no Planner, que é o padrão desde então; o comando abaixo já usa o padrão novo. Relatório em `tools/eval/results/20261114-2103-deepseek_deepseek-v4-pro_bm25.md`.
+**Conjuntos que chamam o LLM:** o Planner e o Matcher usam o `deepseek-flash`, o padrão desde 2026-11-14, e o RAG usa só BM25. A medição de 2026-11-16 (130 pedidos) está em `tools/eval/results/20261116-1825-deepseek_deepseek-flash_bm25.md`. A de 2026-11-14, com o `deepseek-v4-pro` no Planner, serve de comparação.
 
-| Conjunto | Casos | Métrica | Resultado |
-|----------|------:|---------|----------:|
-| Planejamento | 50 | Plano com as operações do gabarito | 92,0% (46) |
-| Planejamento | 50 | Plano válido na 1ª tentativa | 88,0% |
-| Planejamento | 50 | Tentativas inválidas por pedido | 0,06 |
-| Respostas com fonte | 40 | Resposta correta e com a fonte certa | 15,0% (6) |
-| Respostas com fonte | 40 | Resposta com as palavras-chave esperadas | 97,5% (39) |
-| Fora do escopo | 30 | Recusas corretas | 100% |
-| Proativos e sem direito | 10 | Desfecho esperado | 100% |
+| Conjunto | Casos | Métrica | `deepseek-flash` | `deepseek-v4-pro` |
+|----------|------:|---------|-----------------:|------------------:|
+| Planejamento | 50 | Plano com as operações do gabarito | 96,0% (48) | 92,0% (46) |
+| Planejamento | 50 | Plano válido na 1ª tentativa | 90,0% | 88,0% |
+| Planejamento | 50 | Tentativas inválidas por pedido | 0,12 | 0,06 |
+| Respostas com fonte | 40 | Resposta correta e com a fonte certa | 35,0% (14) | 15,0% (6) |
+| Respostas com fonte | 40 | Resposta com as palavras-chave esperadas | 82,5% (33) | 97,5% (39) |
+| Fora do escopo | 30 | Recusas corretas | 100% | 100% |
+| Proativos e sem direito | 10 | Desfecho esperado | 100% | 100% |
 
-- **Planejamento:** os 4 erros são `P14`, `P44` e `P50` (a IA respondeu ou ofereceu opções em vez de propor o plano) e `P39` (propôs só `pick_items`, sem o resto do gabarito).
-- **Respostas com fonte:** o conteúdo está certo em 39 de 40 respostas, mas só 6 citam o código do documento (`POP-03`, `POL-17`...). O prompt de sistema (`Core/Planner/Prompts/system.md`) não pede a citação, embora a tabela acima a trate como obrigatória. **Pendente:** exigir a citação no prompt e medir de novo.
-- **Tokens e tempo por pedido** (entrada + saída, somando as chamadas): planejamento 34.377 e 14,4 s; proativos 32.782 e 14,9 s; respostas com fonte 9.140 e 2,7 s; fora do escopo 6.638 e 1,8 s. A média dos 130 pedidos é 20.088 tokens e 8,0 s. O planejamento consome cerca de 2,5 vezes os 14.000 tokens das premissas da seção 2, então o custo por 1.000 usos de lá está subestimado para o modo proativo.
+- **Planejamento:** os 2 erros do `deepseek-flash` são `P39` (propôs só `pick_items`, sem o resto do gabarito) e `P44` (ofereceu opções em vez de propor o plano). No `deepseek-v4-pro` eram `P14`, `P44`, `P50` e `P39`.
+- **Respostas com fonte:** o `deepseek-flash` cita o código do documento em mais casos (14 de 40, contra 6), mas acerta menos o conteúdo (33 de 40 respostas com as palavras-chave, contra 39). O prompt de sistema (`Core/Planner/Prompts/system.md`) não pede a citação, embora a tabela acima a trate como obrigatória, então a taxa de citação depende do modelo.
+- **Tokens e tempo por pedido** (entrada + saída, somando as chamadas), com o `deepseek-flash`: planejamento 39.230 e 11,7 s; proativos 36.784 e 12,6 s; respostas com fonte 13.246 e 4,0 s; fora do escopo 9.824 e 2,9 s. A média dos 130 pedidos é 24.261 tokens e 7,4 s. O planejamento consome cerca de 3 vezes os 12.000 tokens de entrada das premissas da seção 2, então o custo por 1.000 usos de lá está subestimado para o modo proativo. Como o relatório da avaliação não separa entrada, saída e cache, o teto de custo por pedido é o de contar tudo como entrada sem cache: 24.261 × US$ 0,30 por milhão, cerca de US$ 0,007.
 
 ```bash
 DEEPSEEK_API_KEY=... dotnet run --project tools/Nexus.Eval -- --suites all

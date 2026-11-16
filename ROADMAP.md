@@ -83,7 +83,7 @@ Promoção de planos repetidos a receitas parametrizadas, Recipe Matcher com mod
 
 ### 8. Modelo por papel e fine-tuning ✅
 Modelo por papel configurável, adaptador do modelo local e experimento de fine-tuning do Matcher, que só substitui o `deepseek-flash` se empatar ou superar no *exact match*.
-*Estado:* código pronto em 2026-11-11; treino e medição do modelo local em 2026-11-12. Em 2026-11-14 o projeto ficou só com a DeepSeek como provedor externo. Falta só a comparação com o `deepseek-flash`.
+*Estado:* código pronto em 2026-11-11; treino e medição do modelo local em 2026-11-12. Em 2026-11-14 o projeto ficou só com a DeepSeek como provedor externo.
 - **Provedores:**
   - DeepSeek (feature 3), o único provedor externo;
   - modelo local (servidor de *chat completions*, só em `127.0.0.1`, sem chave).
@@ -98,7 +98,6 @@ Modelo por papel configurável, adaptador do modelo local e experimento de fine-
   - 80% de *exact match* e 30% de acerto em "nenhuma receita", porque o modelo inventa o valor que falta;
   - com a nova checagem `RecipeGrounding` do app (cada valor precisa estar no pedido, para qualquer modelo), 92,5% e 80%.
   - Detalhes no `IA.md`, seção 4.
-- **Pendente (depende da chave da DeepSeek):** a linha de base com o `deepseek-flash` nos dois conjuntos e a decisão de adoção; os comandos estão no `IA.md`, seção 4.
 
 ### 9. Operação ✅
 Backup criptografado pela API do SQLite, job de manutenção de memórias, painel de auditoria e de custos de tokens, e instaladores por plataforma.
@@ -126,8 +125,7 @@ Os conjuntos da seção 5 do `IA.md`, versionados, e um executor que mede o RAG 
 - `tools/eval`: 50 pedidos com gabarito, 40 perguntas sobre `knowledge/`, 30 pedidos fora do escopo e 10 proativos ou sem direito, todos sobre os dados fictícios do seed.
 - `tools/Nexus.Eval`: cria um banco novo, roda o Planner real e grava o relatório (Markdown e JSON) em `tools/eval/results`. As chaves vêm só de variáveis de ambiente e ficam na memória do processo.
 - Medido: RAG com recall@4 de 100% (BM25 e híbrido); recall@1 de 80% no BM25 e 87,5% no híbrido com o modelo local.
-- **Medido com a DeepSeek (2026-11-14, `deepseek-v4-pro` no planejamento):** planejamento com as operações do gabarito em 92% dos 50 pedidos (88% válidos na 1ª tentativa); 100% de recusas corretas nos 30 fora do escopo; 100% nos 10 proativos ou sem direito. Nas 40 perguntas, 97,5% das respostas têm o conteúdo esperado, mas só 15% citam o código do documento. Detalhes no `IA.md`, seção 5.
-- **Pendente:** o prompt de sistema não pede a citação da fonte; exigir e medir de novo. Medir também com o `deepseek-flash` no planejamento, que virou o padrão depois dessa medição.
+- **Medido com a DeepSeek (2026-11-16, `deepseek-flash` no planejamento, o padrão):** planejamento com as operações do gabarito em 96% dos 50 pedidos (90% válidos na 1ª tentativa); 100% de recusas corretas nos 30 fora do escopo; 100% nos 10 proativos ou sem direito. Nas 40 perguntas, 82,5% das respostas têm o conteúdo esperado e 35% citam o código do documento. A média é de 24.261 tokens e 7,4 s por pedido. A medição de 2026-11-14 com o `deepseek-v4-pro` (92% no planejamento, 15% de citações) está no `IA.md`, seção 5.
 
 ### 11. Treinamento guiado ✅
 Um botão Treinamento na coluna de menus abre uma cópia do sistema com dados fictícios e guia o recém-chegado pelas telas e pela IA.

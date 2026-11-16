@@ -48,7 +48,7 @@ public sealed class OperationsViewModelTests
 
         Assert.Equal("2", page.Totals.Single(t => t.Label == "Pedidos").Value);
         Assert.Equal("50%", page.Totals.Single(t => t.Label == "Resolvidos por receita").Value.Replace(" ", "").Replace(" ", ""));
-        Assert.Contains(page.Totals, t => t.Label.StartsWith("Custo estimado (¥)"));
+        Assert.Contains(page.Totals, t => t.Label.StartsWith("Custo estimado (US$)"));
         Assert.Equal(2, page.Lines.Count);
         Assert.Equal("Planejamento", page.Lines[0].Role);
     }

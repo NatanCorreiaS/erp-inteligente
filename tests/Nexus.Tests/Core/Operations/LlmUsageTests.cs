@@ -98,8 +98,8 @@ public sealed class LlmUsageTests : IDisposable
         Assert.Equal(1, report.ByRecipe);
         Assert.Equal(0.25, report.RecipeShare);
         // Strong planner: 1M in + 0.1M out; fast matcher: 1M in; fast planner: 1M in + 1M out.
-        Assert.Equal(9m + 2.7m + 2m + 2m + 8m, report.CostByCurrency["CNY"]);
-        Assert.Equal(0m, report.CostByCurrency["USD"]); // the local model costs nothing per token
+        // The local model costs nothing per token, so only the DeepSeek models add to the dollar total.
+        Assert.Equal(1.32m + 0.396m + 0.30m + 0.30m + 1.20m, report.CostByCurrency["USD"]);
         Assert.Equal(1000, report.Unpriced);
         Assert.Equal(5, report.Lines.Count); // the two fast matcher rows are one line
         var matcher = report.Lines.Single(l => l.Role == LlmUseRole.Matcher && l.Provider == LlmProviderKind.DeepSeek);
@@ -116,13 +116,12 @@ public sealed class LlmUsageTests : IDisposable
     }
 
     [Fact]
-    public void Cached_input_is_priced_at_its_share_of_the_input_price()
+    public void Cached_input_is_priced_at_the_cache_read_price()
     {
         var choice = new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel);
         _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, choice, 3, 1_000_000, 100_000, "answer")
         {
             CacheReadTokens = 800_000,
-            CacheWriteTokens = 100_000,
         });
         // A cached part larger than the prompt is clamped to it.
         _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), 1, 100, 10, "no_match")
@@ -133,10 +132,10 @@ public sealed class LlmUsageTests : IDisposable
         var report = _usage.Report(_f.SessionFor("sup.maria"), _f.Time.GetUtcNow().AddDays(-1));
 
         var planner = report.Lines.Single(l => l.Role == LlmUseRole.Planner);
-        // Per million: 100k uncached × ¥ 9 + 800k read × ¥ 0.90 + 100k written × ¥ 11.25 + 100k out × ¥ 27.
-        Assert.Equal(0.90m + 0.72m + 1.125m + 2.70m, planner.Cost);
+        // Per million: 200k uncached × US$ 1.32 + 800k read × US$ 0.044 + 100k out × US$ 3.96.
+        Assert.Equal(0.264m + 0.0352m + 0.396m, planner.Cost);
         Assert.Equal(800_000, planner.CacheReadTokens);
         Assert.Equal(100, Count("SELECT cache_read_tokens FROM llm_usage WHERE role = 'matcher'"));
-        Assert.Equal(2m * 0.10m * 100 / 1_000_000m + 8m * 10 / 1_000_000m, report.Lines.Single(l => l.Role == LlmUseRole.Matcher).Cost);
+        Assert.Equal(0.006m * 100 / 1_000_000m + 1.20m * 10 / 1_000_000m, report.Lines.Single(l => l.Role == LlmUseRole.Matcher).Cost);
     }
 }
