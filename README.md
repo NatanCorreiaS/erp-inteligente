@@ -628,6 +628,7 @@ python3 -m unittest discover -s db/tests -v
 
 # Gerar o PDF deste README, com os diagramas (precisa de Chrome/Chromium; o PDF não vai para o git)
 python3 tools/readme_to_pdf.py               # gera README.pdf
+python3 tools/readme_to_pdf.py -i relatorio/relatorio_andamento.md -o relatorio/relatorio_andamento.pdf   # relatório
 
 # App desktop (.NET 10)
 dotnet run                                   # banco em ~/.local/share/Nexus/nexus.db (Linux)
@@ -656,6 +657,7 @@ Ajustes, expedições e cancelamentos também podem ser pedidos, desde que quem 
 | [`CANVAS.md`](references/CANVAS.md) | Canvas de uma página |
 | [`IA.md`](references/IA.md) | LLM, custos, RAG, fine-tuning, riscos e métricas |
 | [`SEGURANCA_DADOS.md`](references/SEGURANCA_DADOS.md) | Classificação, papéis, ameaças, otimização, ataques |
+| [`relatorio_andamento.md`](relatorio/relatorio_andamento.md) | Relatório de andamento de 1 a 2 páginas (o PDF sai com `tools/readme_to_pdf.py`) |
 
 ## Apresentação parcial (5 minutos)
 
