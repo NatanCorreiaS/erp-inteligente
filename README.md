@@ -551,7 +551,15 @@ App **desktop nativo** em **C# + Avalonia** (não é web nem SaaS). Banco **SQLi
 ## Parte de Segurança
 
 - **Modelo de dados** com cada coluna classificada como pública, interna ou sensível e a proteção dos sensíveis (AES-GCM, mascaramento, SQLCipher): [`references/SEGURANCA_DADOS.md`](references/SEGURANCA_DADOS.md), seção 2.
-- **Matriz de papéis:** operador, supervisor, administrador, auditor e agente IA, com os pontos de `DENY` (seção 3).
+- **Matriz de papéis:** operador, supervisor, administrador, auditor e agente IA, com os pontos de `DENY` (seção 3). Resumo:
+
+| Papel | Função | Pode | Não pode |
+|-------|--------|------|----------|
+| Operador | Recebe, armazena, separa e consulta | Consultar estoque, receber, movimentar, reservar e separar; criar pedidos de entrada e saída; montar planos e pedir ao Nexus; gravar memórias | Ajustar estoque, expedir, aprovar planos, ver dados sensíveis, ler a auditoria, gerir usuários, skills e memórias |
+| Supervisor | Aprova operações críticas e ajusta estoque | Tudo o que o operador faz; ajustar e expedir; aprovar planos críticos de outra pessoa; cadastrar produtos, parceiros, zonas e endereços; ver dados sensíveis; ler a auditoria e os custos de IA; gerir receitas, skills e memórias | Gerir usuários e papéis; aprovar o próprio plano crítico |
+| Administrador | Cuida de usuários, papéis e configuração; não opera estoque | Consultar estoque; gerir usuários e papéis; ver dados sensíveis; ler a auditoria e os custos de IA; cadastrar a chave da DeepSeek e escolher os modelos; fazer e restaurar backups | Receber, movimentar, ajustar ou expedir; enviar ou aprovar planos; usar o chat do Nexus; gerir skills e memórias |
+| Auditor | Confere o que foi feito, só leitura | Consultar estoque; ver os planos; ler a auditoria e os custos de IA | Enviar ou aprovar planos, operar estoque, ver dados sensíveis, gravar memórias, gerir qualquer coisa |
+| Agente IA | Lê as views `v_ai_*` e propõe planos em nome de quem pediu | Só o que o papel da IA **e** o do usuário permitem ao mesmo tempo (IA ∩ usuário); toda proposta espera o Confirmar de quem pediu | Aprovar, ver dados sensíveis, ler a auditoria, gerir usuários, papéis, receitas, skills e memórias. Esses `DENY` são protegidos por *trigger* e não podem ser removidos |
 - **Catálogo de operações:** 20 operações da DSL v1, cada uma com permissão e risco. Quatro são críticas e exigem outro supervisor:
 
 | Risco | Operações |
@@ -636,7 +644,17 @@ dotnet run -- --db /caminho/nexus.db         # outro arquivo
 dotnet test tests/Nexus.Tests                # testes do app
 ```
 
-No primeiro uso o app cria o banco criptografado a partir dos scripts de `db/` e guarda as chaves no cofre do sistema. Para entrar, use um dos usuários fictícios (`op.joao`, `sup.maria`, `adm.carlos`, `aud.lucia`) com a **senha de demonstração `demo`**. Essa senha existe só para os dados fictícios do repositório e nunca deve ser usada com dados reais.
+No primeiro uso o app cria o banco criptografado a partir dos scripts de `db/` e guarda as chaves no cofre do sistema. Para entrar, use um dos usuários fictícios abaixo com a **senha de demonstração `demo`**. Essa senha existe só para os dados fictícios do repositório e nunca deve ser usada com dados reais. Todos estão no armazém `CD-01` (Centro de Distribuição Fictício 01).
+
+| Usuário | Nome | Papel | O que testar com ele |
+|---------|------|-------|----------------------|
+| `op.joao` | João | Operador | Pedir ao Nexus, montar planos de recebimento, movimentação e separação; ver o ajuste de estoque ser recusado |
+| `sup.maria` | Maria | Supervisora | Aprovar o plano crítico de outra pessoa, ajustar e expedir, ler a auditoria, gerir receitas, skills e memórias |
+| `adm.carlos` | Carlos | Administrador | Cadastrar a chave da DeepSeek em Configurações, escolher os modelos, fazer e restaurar backups, gerir usuários |
+| `aud.lucia` | Lúcia | Auditora | Ler a auditoria, conferir a cadeia de hash, ver planos e custos de IA sem poder alterar nada |
+| `svc.ia` | Agente IA | Agente IA | Não entra no app: é a conta de serviço usada pela IA, sem senha |
+
+Os poderes de cada papel estão na tabela da [Parte de Segurança](#parte-de-segurança).
 
 Para o **Nexus** conversar, o administrador (`adm.carlos`) cola a chave de API da DeepSeek em **Configurações → Provedor de LLM**. A chave vai para o cofre do sistema, nunca para o banco nem para o repositório. Depois disso, peça em linguagem natural. Exemplos:
 - "guarde as 40 caixas do ABC-123 da doca em A-02-01": o Nexus consulta o estoque pelas views `v_ai_*` e devolve uma **proposta** com o efeito simulado;
