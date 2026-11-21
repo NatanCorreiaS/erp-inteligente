@@ -25,6 +25,8 @@ public sealed record LlmMessage
     public IReadOnlyList<LlmToolCall> ToolCalls { get; init; } = [];
     /// <summary>Thinking text of an assistant turn; must be passed back verbatim when tools are in use.</summary>
     public string? ReasoningContent { get; init; }
+    /// <summary>OpenRouter's <c>reasoning_details</c> array as raw JSON; passed back unchanged, never interpreted.</summary>
+    public string? ReasoningDetailsJson { get; init; }
     /// <summary>Id of the call a <see cref="LlmRole.Tool"/> message answers.</summary>
     public string? ToolCallId { get; init; }
 
@@ -38,15 +40,21 @@ public sealed record LlmMessage
     public static LlmMessage Assistant(LlmResponse response)
     {
         ArgumentNullException.ThrowIfNull(response);
-        return Assistant(response.Content, response.ToolCalls, response.ReasoningContent);
+        return Assistant(response.Content, response.ToolCalls, response.ReasoningContent) with
+        {
+            ReasoningDetailsJson = response.ReasoningDetailsJson,
+        };
     }
 
     public static LlmMessage ToolResult(string toolCallId, string content)
         => new() { Role = LlmRole.Tool, ToolCallId = toolCallId, Content = content };
 }
 
-/// <summary>The LLM providers the app talks to (references/STACK.md). <see cref="Local"/> is the fine-tuned Matcher on this machine.</summary>
-public enum LlmProviderKind { DeepSeek, Local }
+/// <summary>
+/// The LLM providers the app talks to (references/STACK.md). <see cref="Local"/> is the fine-tuned Matcher on this machine;
+/// <see cref="OpenRouter"/> gives access to other models, free ones included, for demos and tests.
+/// </summary>
+public enum LlmProviderKind { DeepSeek, Local, OpenRouter }
 
 /// <summary>What a model is used for (references/ARQUITETURA.md, section 10: a model per role).</summary>
 public enum LlmUseRole
@@ -63,7 +71,8 @@ public sealed record LlmChoice(LlmProviderKind Provider, string Model);
 
 /// <summary>
 /// A completion request. <see cref="Temperature"/> is ignored by the provider when null. <see cref="Provider"/> chooses the
-/// adapter when the request goes through <see cref="LlmRouter"/>; null means DeepSeek.
+/// adapter when the request goes through <see cref="LlmRouter"/>; null means DeepSeek. <see cref="NoToolCalls"/> keeps the
+/// tools in the request (a history with tool calls needs them) but forbids calling one (<c>tool_choice: "none"</c>).
 /// </summary>
 public sealed record LlmRequest(
     string Model,
@@ -71,17 +80,20 @@ public sealed record LlmRequest(
     IReadOnlyList<LlmTool> Tools,
     int MaxTokens,
     double? Temperature = null,
-    LlmProviderKind? Provider = null);
+    LlmProviderKind? Provider = null,
+    bool NoToolCalls = false);
 
 /// <summary>
 /// Tokens of one call. <see cref="PromptTokens"/> is the whole input, cached or not; <see cref="CacheReadTokens"/> is the
 /// part of it read from the provider's prompt cache (DeepSeek's <c>prompt_cache_hit_tokens</c>).
 /// <see cref="CacheWriteTokens"/> is for a provider that bills cache writes; DeepSeek does not, so it stays 0.
+/// <see cref="Cost"/> is the cost in US$ reported by the provider (OpenRouter's <c>usage.cost</c>); null when not reported.
 /// </summary>
 public sealed record LlmUsage(int PromptTokens, int CompletionTokens)
 {
     public int CacheReadTokens { get; init; }
     public int CacheWriteTokens { get; init; }
+    public decimal? Cost { get; init; }
 }
 
 public sealed record LlmResponse(
@@ -89,9 +101,14 @@ public sealed record LlmResponse(
     IReadOnlyList<LlmToolCall> ToolCalls,
     string? ReasoningContent,
     LlmFinishReason FinishReason,
-    LlmUsage Usage);
+    LlmUsage Usage)
+{
+    /// <summary>OpenRouter's <c>reasoning_details</c> as raw JSON, to send back with the assistant message.</summary>
+    public string? ReasoningDetailsJson { get; init; }
+}
 
-public enum LlmErrorKind { Unauthorized, RateLimited, Unavailable, InvalidResponse, Timeout, NotConfigured }
+/// <summary>Why a call failed. <see cref="PaymentRequired"/> is HTTP 402: no balance or credits left.</summary>
+public enum LlmErrorKind { Unauthorized, RateLimited, Unavailable, InvalidResponse, Timeout, NotConfigured, PaymentRequired }
 
 /// <summary>Provider failure. The message is generic: it never carries the API key or the response body.</summary>
 public sealed class LlmException(LlmErrorKind kind, string message, int? statusCode = null) : Exception(message)

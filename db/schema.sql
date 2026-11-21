@@ -396,7 +396,7 @@ CREATE TABLE llm_usage (
     user_id           INTEGER REFERENCES users (id),
     warehouse_id      INTEGER REFERENCES warehouses (id),
     role              TEXT NOT NULL CHECK (role IN ('planner', 'matcher')),
-    provider          TEXT NOT NULL CHECK (provider IN ('deepseek', 'local')),
+    provider          TEXT NOT NULL CHECK (provider IN ('deepseek', 'openrouter', 'local')),
     model             TEXT NOT NULL CHECK (length(model) BETWEEN 1 AND 80),
     calls             INTEGER NOT NULL CHECK (calls >= 0),
     prompt_tokens     INTEGER NOT NULL CHECK (prompt_tokens >= 0),
@@ -404,7 +404,9 @@ CREATE TABLE llm_usage (
     result            TEXT NOT NULL CHECK (result IN ('answer', 'proposals', 'recipe', 'no_match', 'escalated', 'failed')),
     -- Part of prompt_tokens read from or written to the provider's prompt cache (migrations/010_llm_usage_cache.sql).
     cache_read_tokens  INTEGER NOT NULL DEFAULT 0 CHECK (cache_read_tokens >= 0),
-    cache_write_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cache_write_tokens >= 0)
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cache_write_tokens >= 0),
+    -- Cost in US$ reported by the provider (OpenRouter); NULL when it reports none (migrations/011_llm_usage_openrouter.sql).
+    cost_usd          REAL CHECK (cost_usd IS NULL OR cost_usd >= 0)
 ) STRICT;
 
 CREATE INDEX llm_usage_by_time ON llm_usage (occurred_at);

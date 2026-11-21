@@ -323,7 +323,7 @@ operacoes: [create_inbound_order, receive_goods, cancel_inbound_order]
 
 ## 10. Provedores de LLM
 
-- Interface única `ILlmProvider` (chat com tool calling). O único provedor externo é a **DeepSeek** (decisão de 2026-11-14); o outro adaptador é o do modelo local, que usa o mesmo formato de *chat completions*.
+- Interface única `ILlmProvider` (chat com tool calling). Os provedores externos são a **DeepSeek**, o padrão, e a **OpenRouter** (decisão de 2026-11-21, para usar modelos gratuitos em apresentações e testes); o outro adaptador é o do modelo local. Os três usam o mesmo formato de *chat completions*.
 - **Estado (feature 3):** a DeepSeek está implementada (`Core/Llm/DeepSeekProvider`), sem streaming, porque a UI mostra a resposta completa.
   - **Endereço:** fixo no código (`https://api.deepseek.com`), só HTTPS e sem seguir redirecionamentos, para a chave não poder ir a outro host.
   - **Tempo e tentativas:** 60 s por tentativa e até 2 novas tentativas, só para 429 e 5xx.
@@ -333,13 +333,21 @@ operacoes: [create_inbound_order, receive_goods, cancel_inbound_order]
 - **Estado (feature 8):** a DeepSeek e o modelo local estão implementados (`Core/Llm`), sobre o mesmo cliente de *chat completions* (`ChatCompletionsProvider`).
   - **Cache de prompt:** a DeepSeek faz o cache do prefixo do prompt sozinha; o cliente lê `prompt_cache_hit_tokens` da resposta e o painel de custos cobra essa parte a 10% do preço de entrada.
   - **Modelo local:** `LocalProvider` fala só com `http://127.0.0.1:porta/v1/chat/completions`, sem chave, e só pode servir ao Matcher.
+  - **OpenRouter:** `OpenRouterProvider` fala só com `https://openrouter.ai/api/v1/chat/completions`, sem seguir redirecionamentos, com a mesma política de tempo e tentativas.
+    - Todo pedido leva `provider.require_parameters: true`, para a OpenRouter escolher só provedores que suportam ferramentas, e o cabeçalho `X-OpenRouter-Title: Nexus`.
+    - A coleta de dados pelos provedores fica permitida, porque os modelos gratuitos dependem dela. Por isso a OpenRouter só serve para os dados fictícios do repositório.
+    - O raciocínio volta nas chamadas seguintes como `reasoning_details`, sem alteração, como a API pede para manter o raciocínio entre chamadas de ferramenta.
+    - Os modelos são ids `autor/modelo` (ex.: `google/gemma-4-31b-it:free`). Configurações sugere quatro e aceita outro id digitado, validado pelo formato.
+    - O teste de conexão lê `GET /api/v1/key`, que confere a chave sem gastar tokens.
+    - O custo de cada chamada vem em `usage.cost` (US$) e é gravado em `llm_usage.cost_usd`.
+  - **Formato comum:** o cliente aceita o erro que a OpenRouter devolve dentro de um HTTP 200 (`error` no topo ou `finish_reason: "error"`) e o trata como o código correspondente, com nova tentativa para 408, 429 e 5xx. O 402 (sem saldo ou créditos, na DeepSeek e na OpenRouter) vira uma mensagem própria. A última rodada do Planner, depois de 3 propostas, mantém as ferramentas no pedido com `tool_choice: "none"`, porque a OpenRouter exige as ferramentas sempre que o histórico tem chamadas.
   - **Roteamento:** `LlmRouter` envia cada pedido ao adaptador de `LlmRequest.Provider`. O Planner usa a escolha do papel `Planner`, e o Recipe Matcher a do papel `Matcher`.
-  - **Configuração:** em Configurações, o administrador (`user.manage`) guarda a chave da DeepSeek (`llm.deepseek.key` no cofre do SO), escolhe o modelo de cada papel e a porta do modelo local. Tudo é auditado sem o valor da chave. O padrão é DeepSeek nos dois papéis.
+  - **Configuração:** em Configurações, o administrador (`user.manage`) guarda a chave da DeepSeek (`llm.deepseek.key`) e a da OpenRouter (`llm.openrouter.key`) no cofre do SO, escolhe o provedor e o modelo de cada papel e a porta do modelo local. Tudo é auditado sem o valor da chave. O padrão é DeepSeek nos dois papéis.
 
 | Papel | Modelo padrão | Alternativas suportadas |
 |-------|---------------|-------------------------|
-| Planner | `deepseek-flash` | `deepseek-v4-pro` |
-| Receitas e extração de parâmetros | `deepseek-flash` | `deepseek-v4-pro` ou o modelo ajustado por fine-tuning (seção 10.1) |
+| Planner | `deepseek-flash` | `deepseek-v4-pro` ou um modelo da OpenRouter |
+| Receitas e extração de parâmetros | `deepseek-flash` | `deepseek-v4-pro`, um modelo da OpenRouter ou o modelo ajustado por fine-tuning (seção 10.1) |
 | Embeddings | Desligados (só BM25) | Modelo de embeddings local (`nexus-embed`) |
 
 A justificativa e o custo por 1.000 usos estão em [`IA.md`](IA.md).

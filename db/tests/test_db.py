@@ -32,6 +32,7 @@ MIGRATION_007 = DB_DIR / "migrations" / "007_recipes.sql"
 MIGRATION_008 = DB_DIR / "migrations" / "008_llm_usage.sql"
 MIGRATION_009 = DB_DIR / "migrations" / "009_knowledge_embeddings.sql"
 MIGRATION_010 = DB_DIR / "migrations" / "010_llm_usage_cache.sql"
+MIGRATION_011 = DB_DIR / "migrations" / "011_llm_usage_openrouter.sql"
 V3_SCRIPTS = ("schema_v3.sql", "security_v3.sql", "seed_v3.sql")
 V4_SCRIPTS = ("schema_v4.sql", "security_v4.sql", "seed_v4.sql")
 V5_SCRIPTS = ("schema_v5.sql", "security_v5.sql", "seed_v5.sql")
@@ -39,6 +40,7 @@ V6_SCRIPTS = ("schema_v6.sql", "security_v6.sql", "seed_v6.sql")
 V7_SCRIPTS = ("schema_v7.sql", "security_v7.sql", "seed_v7.sql")
 V8_SCRIPTS = ("schema_v8.sql", "security_v8.sql", "seed_v8.sql")
 V9_SCRIPTS = ("schema_v9.sql", "security_v9.sql", "seed_v9.sql")
+V10_SCRIPTS = ("schema_v10.sql", "security_v10.sql", "seed_v10.sql")
 # Schema version 2 scripts (git commit d145eee), kept as C# fixtures and shared with the C# migration tests.
 V2_FIXTURES = DB_DIR.parent / "tests" / "Nexus.Tests" / "Core" / "Data" / "Fixtures"
 V2_SCRIPTS = ("schema_v2.sql", "security_v2.sql", "seed_v2.sql")
@@ -471,6 +473,7 @@ class MigrationTo3Tests(unittest.TestCase):
         self.migrated.executescript(MIGRATION_008.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_009.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_010.read_text(encoding="utf-8"))
+        self.migrated.executescript(MIGRATION_011.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.fresh.close()
@@ -633,6 +636,7 @@ class MigrationTo4Tests(unittest.TestCase):
         self.migrated.executescript(MIGRATION_008.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_009.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_010.read_text(encoding="utf-8"))
+        self.migrated.executescript(MIGRATION_011.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.fresh.close()
@@ -684,6 +688,7 @@ class MigrationTo5Tests(unittest.TestCase):
         self.migrated.executescript(MIGRATION_008.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_009.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_010.read_text(encoding="utf-8"))
+        self.migrated.executescript(MIGRATION_011.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.fresh.close()
@@ -847,6 +852,7 @@ class MigrationTo6Tests(unittest.TestCase):
         self.migrated.executescript(MIGRATION_008.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_009.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_010.read_text(encoding="utf-8"))
+        self.migrated.executescript(MIGRATION_011.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.fresh.close()
@@ -911,6 +917,7 @@ class MigrationTo7Tests(unittest.TestCase):
         self.migrated.executescript(MIGRATION_008.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_009.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_010.read_text(encoding="utf-8"))
+        self.migrated.executescript(MIGRATION_011.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.fresh.close()
@@ -950,6 +957,7 @@ class MigrationTo8Tests(unittest.TestCase):
         self.migrated.executescript(MIGRATION_008.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_009.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_010.read_text(encoding="utf-8"))
+        self.migrated.executescript(MIGRATION_011.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.fresh.close()
@@ -980,6 +988,7 @@ class MigrationTo9Tests(unittest.TestCase):
             self.migrated.executescript((V2_FIXTURES / name).read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_009.read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_010.read_text(encoding="utf-8"))
+        self.migrated.executescript(MIGRATION_011.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.fresh.close()
@@ -998,7 +1007,7 @@ class MigrationTo9Tests(unittest.TestCase):
 
 
 class MigrationTo10Tests(unittest.TestCase):
-    """A version 9 database upgraded by migrations/010 must match a fresh install (cache columns of llm_usage)."""
+    """A version 9 database upgraded by migrations/010 (and 011, to reach the current version) must match a fresh install."""
 
     def setUp(self):
         self.fresh = sqlite3.connect(":memory:")
@@ -1008,6 +1017,7 @@ class MigrationTo10Tests(unittest.TestCase):
         for name in V9_SCRIPTS:
             self.migrated.executescript((V2_FIXTURES / name).read_text(encoding="utf-8"))
         self.migrated.executescript(MIGRATION_010.read_text(encoding="utf-8"))
+        self.migrated.executescript(MIGRATION_011.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.fresh.close()
@@ -1030,6 +1040,56 @@ class MigrationTo10Tests(unittest.TestCase):
                                "completion_tokens, result) VALUES ('t', 'planner', 'deepseek', 'm', 1, 1, 1, 'answer')").lastrowid
             with self.assertRaisesRegex(sqlite3.DatabaseError, "DENY"):
                 conn.execute("UPDATE llm_usage SET cache_read_tokens = 1 WHERE id = ?", (uid,))
+
+
+class MigrationTo11Tests(unittest.TestCase):
+    """A version 10 database upgraded by migrations/011 must match a fresh install (OpenRouter and the reported cost)."""
+
+    def setUp(self):
+        self.fresh = sqlite3.connect(":memory:")
+        load_scripts(self.fresh, BASE_SCRIPTS)
+        self.migrated = sqlite3.connect(":memory:")
+        self.migrated.execute("PRAGMA foreign_keys = ON")
+        for name in V10_SCRIPTS:
+            self.migrated.executescript((V2_FIXTURES / name).read_text(encoding="utf-8"))
+        self.migrated.execute("INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, "
+                              "completion_tokens, result, cache_read_tokens) "
+                              "VALUES ('t', 'planner', 'deepseek', 'deepseek-flash', 2, 100, 20, 'answer', 40)")
+        self.migrated.executescript(MIGRATION_011.read_text(encoding="utf-8"))
+
+    def tearDown(self):
+        self.fresh.close()
+        self.migrated.close()
+
+    def assertSameRows(self, query):
+        self.assertEqual(self.migrated.execute(query).fetchall(), self.fresh.execute(query).fetchall(), query)
+
+    def test_usage_table_matches_fresh_install(self):
+        self.assertSameRows(
+            "SELECT name, type, \"notnull\", dflt_value, pk FROM pragma_table_info('llm_usage') ORDER BY cid")
+        self.assertSameRows("SELECT type, name FROM sqlite_schema ORDER BY 1, 2")
+        self.assertSameRows("SELECT name, sql FROM sqlite_schema WHERE tbl_name = 'llm_usage' AND type IN ('index', 'trigger') "
+                            "ORDER BY name")
+
+    def test_old_rows_are_kept_without_cost(self):
+        self.assertEqual(self.migrated.execute(
+            "SELECT provider, model, calls, prompt_tokens, cache_read_tokens, cost_usd FROM llm_usage").fetchall(),
+            [("deepseek", "deepseek-flash", 2, 100, 40, None)])
+
+    def test_openrouter_and_cost_are_checked_and_usage_stays_append_only(self):
+        for conn in (self.fresh, self.migrated):
+            uid = conn.execute("INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, "
+                               "completion_tokens, result, cost_usd) VALUES ('t', 'matcher', 'openrouter', "
+                               "'google/gemma-4-31b-it:free', 1, 10, 5, 'no_match', 0.0)").lastrowid
+            for provider, cost in (("openrouter", -0.01), ("outro", None)):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    conn.execute("INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, "
+                                 "completion_tokens, result, cost_usd) VALUES ('t', 'planner', ?, 'm', 1, 1, 1, 'answer', ?)",
+                                 (provider, cost))
+            with self.assertRaisesRegex(sqlite3.DatabaseError, "DENY"):
+                conn.execute("UPDATE llm_usage SET cost_usd = 1 WHERE id = ?", (uid,))
+            with self.assertRaisesRegex(sqlite3.DatabaseError, "DENY"):
+                conn.execute("DELETE FROM llm_usage WHERE id = ?", (uid,))
 
 
 class KnowledgeEmbeddingTests(DatabaseTestCase):

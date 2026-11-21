@@ -12,7 +12,7 @@ using erp_inteligente.Models;
 namespace erp_inteligente.Services;
 
 /// <summary>
-/// The LLM settings seen from the Settings screen (feature 8: DeepSeek and a local model; a model per
+/// The LLM settings seen from the Settings screen (feature 8: DeepSeek, OpenRouter and a local model; a model per
 /// role). Only an administrator (<c>user.manage</c>, checked live) changes keys, models or the local port; every change is
 /// audited without the value of a key. Keys never leave the OS key store except to authenticate a request. The members
 /// without a provider argument are DeepSeek's, as before.
@@ -66,10 +66,6 @@ public sealed class LlmSettingsService(
             _ => $"{name}: resposta inválida.",
         } + $" {result.Embedded} trecho(s) indexado(s), {result.Pending} pendente(s).";
     }
-
-    public const string ProviderName = "DeepSeek";
-
-    public IReadOnlyList<string> Models => LlmSettings.SupportedModels;
 
     public bool IsConfigured => settings.IsConfigured;
 
@@ -152,6 +148,7 @@ public sealed class LlmSettingsService(
             {
                 LlmErrorKind.NotConfigured => provider == LlmProviderKind.Local ? "A porta do modelo local é inválida." : "Nenhuma chave configurada.",
                 LlmErrorKind.Unauthorized => $"{name}: a chave foi recusada.",
+                LlmErrorKind.PaymentRequired => $"{name}: a conta está sem saldo ou créditos.",
                 LlmErrorKind.RateLimited => $"{name}: limite de uso atingido. Tente mais tarde.",
                 LlmErrorKind.Timeout => $"{name}: não respondeu a tempo.",
                 LlmErrorKind.Unavailable => $"{name}: não foi possível conectar. Verifique a conexão" +

@@ -8,12 +8,13 @@ using erp_inteligente.Models;
 using Nexus.Eval;
 
 // Runs the evaluation sets of references/IA.md, section 5 (tools/eval) on a fresh database with the seed data.
-// The key comes only from the DEEPSEEK_API_KEY environment variable (never from arguments). It goes to an in-memory key
+// The keys come only from the DEEPSEEK_API_KEY and OPENROUTER_API_KEY environment variables (never from arguments). It goes to an in-memory key
 // store of this process and is never written anywhere.
 //
 //   dotnet run --project tools/Nexus.Eval                                    # RAG recall@4, BM25 only (no key)
 //   dotnet run --project tools/Nexus.Eval -- --embeddings local --port 8080  # hybrid, local embeddings server
 //   dotnet run --project tools/Nexus.Eval -- --suites all                             # every set; needs DEEPSEEK_API_KEY
+//   dotnet run --project tools/Nexus.Eval -- --suites all --planner openrouter:google/gemma-4-31b-it:free   # OPENROUTER_API_KEY
 
 var options = ParseArgs(args);
 if (options is null)
@@ -21,7 +22,7 @@ if (options is null)
     Console.Error.WriteLine("""
         Uso: Nexus.Eval [--suites rag,planning,knowledge,scope|all] [--planner provedor[:modelo]] [--matcher provedor[:modelo]]
                         [--embeddings off|local] [--port N] [--limit N] [--label nome] [--out pasta]
-        Chave por variável de ambiente: DEEPSEEK_API_KEY.
+        Chave por variável de ambiente: DEEPSEEK_API_KEY ou OPENROUTER_API_KEY (provedor openrouter:autor/modelo).
         """);
     return 2;
 }
@@ -36,6 +37,8 @@ try
 {
     if (Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") is { Length: > 0 } key)
         host.LlmSettings.SetKey(key);
+    if (Environment.GetEnvironmentVariable("OPENROUTER_API_KEY") is { Length: > 0 } openRouterKey)
+        host.LlmSettings.SetKey(LlmProviderKind.OpenRouter, openRouterKey);
     if (options.Port is { } port) host.LlmSettings.LocalPort = port;
     if (options.Planner is { } planner) host.LlmSettings.SetChoice(LlmUseRole.Planner, planner);
     if (options.Matcher is { } matcher) host.LlmSettings.SetChoice(LlmUseRole.Matcher, matcher);
@@ -46,7 +49,8 @@ try
     var plannerChoice = host.LlmSettings.ChoiceFor(LlmUseRole.Planner);
     if (needsLlm && !host.LlmSettings.IsConfiguredFor(plannerChoice.Provider))
     {
-        Console.Error.WriteLine($"Sem chave para {LlmSettings.ProviderName(plannerChoice.Provider)}: defina a variável de ambiente DEEPSEEK_API_KEY.");
+        var variable = plannerChoice.Provider == LlmProviderKind.OpenRouter ? "OPENROUTER_API_KEY" : "DEEPSEEK_API_KEY";
+        Console.Error.WriteLine($"Sem chave para {LlmSettings.ProviderName(plannerChoice.Provider)}: defina a variável de ambiente {variable}.");
         return 3;
     }
     if (options.Embeddings is not null)
@@ -139,7 +143,8 @@ static LlmChoice Choice(string text, LlmUseRole role)
 {
     var parts = text.Split(':', 2);
     var provider = Enum.Parse<LlmProviderKind>(parts[0], ignoreCase: true);
-    var choice = new LlmChoice(provider, parts.Length > 1 ? parts[1] : LlmSettings.ModelsFor(provider)[role == LlmUseRole.Planner || provider == LlmProviderKind.Local ? 0 : ^1]);
+    var first = role == LlmUseRole.Planner || provider != LlmProviderKind.DeepSeek;
+    var choice = new LlmChoice(provider, parts.Length > 1 ? parts[1] : LlmSettings.ModelsFor(provider)[first ? 0 : ^1]);
     return LlmSettings.IsSupported(choice, role) ? choice : throw new ArgumentException(text);
 }
 

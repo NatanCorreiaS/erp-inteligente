@@ -40,8 +40,9 @@ flowchart TB
         end
     end
 
-    subgraph EXT["Provedor externo · HTTPS · sem dados sensíveis"]
+    subgraph EXT["Provedores externos · HTTPS · sem dados sensíveis"]
         DS["DeepSeek API<br/>deepseek-flash · deepseek-v4-pro opcional"]
+        OR["OpenRouter<br/>modelos gratuitos para demonstração"]
     end
 
     subgraph FT["Fine-tuning · offline"]
@@ -61,6 +62,8 @@ flowchart TB
     RM -- "sem receita" --> PL
     RM <--> DS
     PL <--> DS
+    RM <-.-> OR
+    PL <-.-> OR
     PL --> ROCONN --> DATA
     PL --> HYB --> AIDATA
     CHK --> EMB --> AIDATA

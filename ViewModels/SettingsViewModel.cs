@@ -79,12 +79,14 @@ public sealed partial class SettingsViewModel : PageViewModel
         {
             var planner = llm.ChoiceFor(LlmUseRole.Planner);
             PlannerProvider = PlannerProviders.First(p => p.Kind == planner.Provider);
-            PlannerModels = LlmSettings.ModelsFor(planner.Provider);
+            PlannerModels = WithCurrent(planner);
             PlannerModel = planner.Model;
+            PlannerModelText = planner.Model;
             var matcher = llm.ChoiceFor(LlmUseRole.Matcher);
             MatcherProvider = MatcherProviders.First(p => p.Kind == matcher.Provider);
-            MatcherModels = LlmSettings.ModelsFor(matcher.Provider);
+            MatcherModels = WithCurrent(matcher);
             MatcherModel = matcher.Model;
+            MatcherModelText = matcher.Model;
             LocalPortText = llm.LocalPort.ToString(CultureInfo.InvariantCulture);
             HasEmbeddings = llm.HasEmbeddings;
             var embedding = llm.EmbeddingChoice;
@@ -96,6 +98,13 @@ public sealed partial class SettingsViewModel : PageViewModel
 
     private static ProviderOption Option(LlmProviderKind kind) => new(kind, LlmSettings.ProviderName(kind));
 
+    /// <summary>The suggested models, plus the saved one when it was typed (OpenRouter), so the box can show it.</summary>
+    private static IReadOnlyList<string> WithCurrent(LlmChoice choice)
+    {
+        var models = LlmSettings.ModelsFor(choice.Provider);
+        return models.Contains(choice.Model) ? models : [.. models, choice.Model];
+    }
+
     public override string Title => "Configurações";
 
     public IReadOnlyList<SummaryTotal> Fields { get; }
@@ -106,8 +115,6 @@ public sealed partial class SettingsViewModel : PageViewModel
     public bool CanConfigure { get; }
 
     public bool IsReadOnlyLlm => HasLlm && !CanConfigure;
-
-    public string ProviderName => LlmSettingsService.ProviderName;
 
     public ObservableCollection<ProviderStatusRow> ProviderRows { get; } = [];
 
@@ -148,6 +155,18 @@ public sealed partial class SettingsViewModel : PageViewModel
     [ObservableProperty] public partial IReadOnlyList<string> MatcherModels { get; private set; } = [];
     [ObservableProperty] public partial string? MatcherModel { get; set; }
 
+    /// <summary>The text of an editable model box (OpenRouter); saved only by Aplicar, after validation.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ApplyPlannerModelCommand))]
+    public partial string? PlannerModelText { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ApplyMatcherModelCommand))]
+    public partial string? MatcherModelText { get; set; }
+
+    public bool PlannerAcceptsAnyModel => PlannerProvider is { } p && LlmSettings.AcceptsAnyModel(p.Kind);
+    public bool MatcherAcceptsAnyModel => MatcherProvider is { } p && LlmSettings.AcceptsAnyModel(p.Kind);
+
     /// <summary>The Planner's models (DeepSeek's, before feature 8).</summary>
     public IReadOnlyList<string> Models => PlannerModels;
 
@@ -158,8 +177,19 @@ public sealed partial class SettingsViewModel : PageViewModel
         set => PlannerModel = value;
     }
 
-    partial void OnPlannerProviderChanged(ProviderOption? value) => ProviderChanged(LlmUseRole.Planner, value);
-    partial void OnMatcherProviderChanged(ProviderOption? value) => ProviderChanged(LlmUseRole.Matcher, value);
+    partial void OnPlannerProviderChanged(ProviderOption? value)
+    {
+        OnPropertyChanged(nameof(PlannerAcceptsAnyModel));
+        ApplyPlannerModelCommand.NotifyCanExecuteChanged();
+        ProviderChanged(LlmUseRole.Planner, value);
+    }
+
+    partial void OnMatcherProviderChanged(ProviderOption? value)
+    {
+        OnPropertyChanged(nameof(MatcherAcceptsAnyModel));
+        ApplyMatcherModelCommand.NotifyCanExecuteChanged();
+        ProviderChanged(LlmUseRole.Matcher, value);
+    }
     partial void OnPlannerModelChanged(string? value) => ModelChanged(LlmUseRole.Planner, PlannerProvider, value);
     partial void OnMatcherModelChanged(string? value) => ModelChanged(LlmUseRole.Matcher, MatcherProvider, value);
 
@@ -169,8 +199,8 @@ public sealed partial class SettingsViewModel : PageViewModel
         if (_loading || provider is null) return;
         var models = LlmSettings.ModelsFor(provider.Kind);
         _loading = true;
-        if (role == LlmUseRole.Planner) { PlannerModels = models; PlannerModel = models[0]; }
-        else { MatcherModels = models; MatcherModel = models[0]; }
+        if (role == LlmUseRole.Planner) { PlannerModels = models; PlannerModel = models[0]; PlannerModelText = models[0]; }
+        else { MatcherModels = models; MatcherModel = models[0]; MatcherModelText = models[0]; }
         _loading = false;
         OnPropertyChanged(nameof(Models));
         Save(role, new LlmChoice(provider.Kind, models[0]));
@@ -180,6 +210,35 @@ public sealed partial class SettingsViewModel : PageViewModel
     {
         if (_loading || provider is null || model is null) return;
         Save(role, new LlmChoice(provider.Kind, model));
+    }
+
+    private bool CanApplyPlannerModel() => CanConfigure && PlannerAcceptsAnyModel && !string.IsNullOrWhiteSpace(PlannerModelText);
+    private bool CanApplyMatcherModel() => CanConfigure && MatcherAcceptsAnyModel && !string.IsNullOrWhiteSpace(MatcherModelText);
+
+    [RelayCommand(CanExecute = nameof(CanApplyPlannerModel))]
+    private void ApplyPlannerModel() => ApplyTyped(LlmUseRole.Planner, PlannerProvider, PlannerModelText);
+
+    [RelayCommand(CanExecute = nameof(CanApplyMatcherModel))]
+    private void ApplyMatcherModel() => ApplyTyped(LlmUseRole.Matcher, MatcherProvider, MatcherModelText);
+
+    /// <summary>Saves a typed OpenRouter id; an id out of the <c>author/model</c> format is refused before reaching the store.</summary>
+    private void ApplyTyped(LlmUseRole role, ProviderOption? provider, string? text)
+    {
+        if (provider is null || text is null) return;
+        var model = text.Trim();
+        if (!LlmSettings.IsValidOpenRouterModel(model))
+        {
+            Feedback = "Modelo inválido: use o formato autor/modelo, em minúsculas (ex.: google/gemma-4-31b-it:free).";
+            FeedbackIsError = true;
+            FeedbackIsSuccess = false;
+            return;
+        }
+        var choice = new LlmChoice(provider.Kind, model);
+        _loading = true;
+        if (role == LlmUseRole.Planner) { PlannerModels = WithCurrent(choice); PlannerModel = model; PlannerModelText = model; }
+        else { MatcherModels = WithCurrent(choice); MatcherModel = model; MatcherModelText = model; }
+        _loading = false;
+        Save(role, choice);
     }
 
     private void Save(LlmUseRole role, LlmChoice choice)

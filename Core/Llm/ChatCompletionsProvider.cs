@@ -11,8 +11,8 @@ using System.Threading.Tasks;
 namespace erp_inteligente.Core.Llm;
 
 /// <summary>
-/// Client of the "chat completions" wire format (non-streaming), shared by DeepSeek and a local server that speaks the
-/// same format. The endpoint is fixed by each subclass, so a key can never be sent elsewhere; errors carry only a kind
+/// Client of the "chat completions" wire format (non-streaming), shared by DeepSeek, OpenRouter and a local server that
+/// speaks the same format. The endpoint is fixed by each subclass, so a key can never be sent elsewhere; errors carry only a kind
 /// and a status code, never the key or the response body.
 /// </summary>
 public abstract class ChatCompletionsProvider : ILlmProvider
@@ -55,59 +55,108 @@ public abstract class ChatCompletionsProvider : ILlmProvider
     {
         for (var attempt = 0; ; attempt++)
         {
-            ct.ThrowIfCancellationRequested();
-            using var message = new HttpRequestMessage(HttpMethod.Post, Endpoint);
-            if (_keySource is not null)
+            var (status, text) = await ExchangeAsync(HttpMethod.Post, Endpoint, body, ct).ConfigureAwait(false);
+            if (text is not null)
             {
-                var key = _keySource();
-                if (key is null || key.Length == 0)
-                    throw new LlmException(LlmErrorKind.NotConfigured, "The LLM API key is not configured.");
-                try { message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Encoding.UTF8.GetString(key)); }
-                finally { Array.Clear(key); }
+                // A 200 can still carry an error (OpenRouter: a top-level "error", or finish_reason "error").
+                var (response, errorCode) = ParseResponse(text);
+                if (response is not null) return response;
+                status = errorCode;
             }
-            message.Content = new ByteArrayContent(body);
-            message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-
-            int status;
-            string? text = null;
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(_timeout);
-            try
-            {
-                using var response = await _http.SendAsync(message, timeoutCts.Token).ConfigureAwait(false);
-                status = (int)response.StatusCode;
-                if (response.IsSuccessStatusCode)
-                    text = await response.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                throw new LlmException(LlmErrorKind.Timeout, "The LLM request timed out.");
-            }
-            catch (HttpRequestException)
-            {
-                throw new LlmException(LlmErrorKind.Unavailable, "The LLM service could not be reached.");
-            }
-
-            if (text is not null) return ParseResponse(text);
-
-            if (status is 401 or 403)
-                throw new LlmException(LlmErrorKind.Unauthorized, "The LLM provider rejected the credentials.", status);
-            if (status == 429 || status >= 500)
-            {
-                if (attempt < MaxRetries)
-                {
-                    await _delay(TimeSpan.FromSeconds(attempt == 0 ? 1 : 3), ct).ConfigureAwait(false);
-                    continue;
-                }
-                throw status == 429
-                    ? new LlmException(LlmErrorKind.RateLimited, "The LLM provider is rate limiting requests.", status)
-                    : new LlmException(LlmErrorKind.Unavailable, "The LLM service is unavailable.", status);
-            }
-            throw new LlmException(LlmErrorKind.InvalidResponse, "The LLM provider rejected the request.", status);
+            if (await ShouldRetryAsync(status, attempt, ct).ConfigureAwait(false)) continue;
+            throw ErrorFor(status);
         }
     }
 
-    /// <param name="extra">Writes provider-specific top-level fields (e.g. DeepSeek's <c>thinking</c>).</param>
+    /// <summary>
+    /// A GET with the key to a fixed URL of the same host, for connection tests that spend no tokens. The body is ignored;
+    /// only the status matters.
+    /// </summary>
+    protected async Task ProbeAsync(Uri url, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var (status, text) = await ExchangeAsync(HttpMethod.Get, url, null, ct).ConfigureAwait(false);
+            if (text is not null) return;
+            if (await ShouldRetryAsync(status, attempt, ct).ConfigureAwait(false)) continue;
+            throw ErrorFor(status);
+        }
+    }
+
+    /// <summary>Extra headers of a provider (never a secret other than the Authorization header set here).</summary>
+    protected virtual void AddHeaders(HttpRequestMessage message)
+    {
+    }
+
+    /// <summary>Provider-specific top-level fields written into every request body.</summary>
+    protected virtual void WriteExtraFields(Utf8JsonWriter writer)
+    {
+    }
+
+    /// <summary>OpenRouter returns <c>reasoning_details</c> and expects it back, unchanged, in the following calls.</summary>
+    protected virtual bool SendsReasoningDetailsBack => false;
+
+    /// <summary>One HTTP exchange: the status, and the body when the status is a success.</summary>
+    private async Task<(int Status, string? Text)> ExchangeAsync(HttpMethod method, Uri url, byte[]? body, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        using var message = new HttpRequestMessage(method, url);
+        if (_keySource is not null)
+        {
+            var key = _keySource();
+            if (key is null || key.Length == 0)
+                throw new LlmException(LlmErrorKind.NotConfigured, "The LLM API key is not configured.");
+            try { message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Encoding.UTF8.GetString(key)); }
+            finally { Array.Clear(key); }
+        }
+        AddHeaders(message);
+        if (body is not null)
+        {
+            message.Content = new ByteArrayContent(body);
+            message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(_timeout);
+        try
+        {
+            using var response = await _http.SendAsync(message, timeoutCts.Token).ConfigureAwait(false);
+            var status = (int)response.StatusCode;
+            return response.IsSuccessStatusCode
+                ? (status, await response.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false))
+                : (status, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new LlmException(LlmErrorKind.Timeout, "The LLM request timed out.");
+        }
+        catch (HttpRequestException)
+        {
+            throw new LlmException(LlmErrorKind.Unavailable, "The LLM service could not be reached.");
+        }
+    }
+
+    /// <summary>Rate limits, timeouts and server errors are retried twice, after 1 s and 3 s.</summary>
+    private async Task<bool> ShouldRetryAsync(int status, int attempt, CancellationToken ct)
+    {
+        if (!IsTransient(status) || attempt >= MaxRetries) return false;
+        await _delay(TimeSpan.FromSeconds(attempt == 0 ? 1 : 3), ct).ConfigureAwait(false);
+        return true;
+    }
+
+    private static bool IsTransient(int status) => status is 408 or 429 or >= 500;
+
+    private static LlmException ErrorFor(int status) => status switch
+    {
+        401 or 403 => new(LlmErrorKind.Unauthorized, "The LLM provider rejected the credentials.", status),
+        402 => new(LlmErrorKind.PaymentRequired, "The LLM account has no balance or credits left.", status),
+        408 or 524 => new(LlmErrorKind.Timeout, "The LLM request timed out.", status),
+        429 => new(LlmErrorKind.RateLimited, "The LLM provider is rate limiting requests.", status),
+        >= 500 => new(LlmErrorKind.Unavailable, "The LLM service is unavailable.", status),
+        _ => new(LlmErrorKind.InvalidResponse, "The LLM provider rejected the request.", status),
+    };
+
+    /// <param name="extra">Writes top-level fields of one call (e.g. DeepSeek's <c>thinking</c> in the connection test).</param>
     protected byte[] BuildBody(LlmRequest r, Action<Utf8JsonWriter>? extra)
     {
         var buffer = new ArrayBufferWriter<byte>();
@@ -136,8 +185,10 @@ public abstract class ChatCompletionsProvider : ILlmProvider
                 }
                 w.WriteEndArray();
             }
+            if (r.NoToolCalls && r.Tools.Count > 0) w.WriteString("tool_choice", "none");
             w.WriteNumber("max_tokens", r.MaxTokens);
             if (r.Temperature is { } temp) w.WriteNumber("temperature", temp);
+            WriteExtraFields(w);
             extra?.Invoke(w);
             w.WriteBoolean("stream", false);
             w.WriteEndObject();
@@ -162,6 +213,12 @@ public abstract class ChatCompletionsProvider : ILlmProvider
         if (m.Role == LlmRole.Assistant)
         {
             if (SendsReasoningBack && m.ReasoningContent is not null) w.WriteString("reasoning_content", m.ReasoningContent);
+            if (SendsReasoningDetailsBack && m.ReasoningDetailsJson is not null)
+            {
+                w.WritePropertyName("reasoning_details");
+                using var details = JsonDocument.Parse(m.ReasoningDetailsJson);
+                details.RootElement.WriteTo(w);
+            }
             if (m.ToolCalls.Count > 0)
             {
                 w.WriteStartArray("tool_calls");
@@ -184,17 +241,27 @@ public abstract class ChatCompletionsProvider : ILlmProvider
 
     private static LlmException Invalid() => new(LlmErrorKind.InvalidResponse, "The LLM response was not in the expected format.");
 
-    private static LlmResponse ParseResponse(string text)
+    /// <summary>
+    /// The response, or the error code it carries instead: a top-level <c>error</c> object or a choice that finished with
+    /// <c>"error"</c> (OpenRouter reports provider failures this way, with HTTP 200). A missing code counts as 502.
+    /// </summary>
+    private static (LlmResponse? Response, int ErrorCode) ParseResponse(string text)
     {
         try
         {
             using var doc = JsonDocument.Parse(text);
             var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty("choices", out var choices)
+            if (root.ValueKind != JsonValueKind.Object) throw Invalid();
+            if (root.TryGetProperty("error", out var topError) && topError.ValueKind == JsonValueKind.Object)
+                return (null, ErrorCode(topError));
+            if (!root.TryGetProperty("choices", out var choices)
                 || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
                 throw Invalid();
             var choice = choices[0];
+            if (Str(choice, "finish_reason") == "error")
+                return (null, choice.TryGetProperty("error", out var choiceError) && choiceError.ValueKind == JsonValueKind.Object
+                    ? ErrorCode(choiceError)
+                    : 502);
             if (!choice.TryGetProperty("message", out var msg) || msg.ValueKind != JsonValueKind.Object) throw Invalid();
 
             var calls = new List<LlmToolCall>();
@@ -223,21 +290,39 @@ public abstract class ChatCompletionsProvider : ILlmProvider
             var usage = new LlmUsage(0, 0);
             if (root.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
             {
-                // DeepSeek caches prompt prefixes by itself and reports the part of the prompt it read from the cache.
+                // DeepSeek reports the cached part of the prompt as prompt_cache_hit_tokens; OpenRouter (the standard
+                // format) as prompt_tokens_details.cached_tokens, with cache writes and the cost in US$ beside it.
                 var prompt = Int(u, "prompt_tokens");
+                var details = u.TryGetProperty("prompt_tokens_details", out var d) && d.ValueKind == JsonValueKind.Object ? d : default;
+                var cacheRead = u.TryGetProperty("prompt_cache_hit_tokens", out _)
+                    ? Int(u, "prompt_cache_hit_tokens")
+                    : details.ValueKind == JsonValueKind.Object ? Int(details, "cached_tokens") : 0;
+                var cacheWrite = details.ValueKind == JsonValueKind.Object ? Int(details, "cache_write_tokens") : 0;
+                cacheRead = Math.Clamp(cacheRead, 0, prompt);
                 usage = new LlmUsage(prompt, Int(u, "completion_tokens"))
                 {
-                    CacheReadTokens = Math.Clamp(Int(u, "prompt_cache_hit_tokens"), 0, prompt),
+                    CacheReadTokens = cacheRead,
+                    CacheWriteTokens = Math.Clamp(cacheWrite, 0, prompt - cacheRead),
+                    Cost = u.TryGetProperty("cost", out var cost) && cost.ValueKind == JsonValueKind.Number
+                        && cost.TryGetDecimal(out var value) && value >= 0 ? value : null,
                 };
             }
 
-            return new LlmResponse(Str(msg, "content"), calls, Str(msg, "reasoning_content"), finish, usage);
+            var reasoningDetails = msg.TryGetProperty("reasoning_details", out var rd)
+                && rd.ValueKind == JsonValueKind.Array && rd.GetArrayLength() > 0 ? rd.GetRawText() : null;
+            var reasoning = Str(msg, "reasoning_content") ?? Str(msg, "reasoning");
+            return (new LlmResponse(Str(msg, "content"), calls, reasoning, finish, usage) { ReasoningDetailsJson = reasoningDetails }, 0);
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException)
         {
             throw Invalid();
         }
     }
+
+    /// <summary>The HTTP-like code of an error object; anything unusable counts as a provider failure (502).</summary>
+    private static int ErrorCode(JsonElement error) =>
+        error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.Number && code.TryGetInt32(out var n)
+            && n is >= 400 and <= 599 ? n : 502;
 
     private static string? Str(JsonElement e, string name)
         => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;

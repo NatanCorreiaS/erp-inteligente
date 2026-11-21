@@ -213,7 +213,7 @@ public static class TutorialCatalog
             new("Configurações", "Clique em Configurações.",
                 TutorialAnchors.Nav("Settings"), c => c.ActiveKey == "Settings"),
             new("O que o administrador mantém",
-                "No sistema real, esta tela guarda a chave da DeepSeek no cofre do sistema operacional, escolhe o modelo de planejamento e o de receitas, " +
+                "No sistema real, esta tela guarda as chaves da DeepSeek e da OpenRouter no cofre do sistema operacional, escolhe o modelo de planejamento e o de receitas, " +
                 "e faz e restaura backups criptografados. No treinamento a chave não é mostrada nem editada.",
                 TutorialAnchors.Content),
             new("Auditado",

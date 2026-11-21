@@ -93,8 +93,8 @@ public sealed class SettingsViewModelTests : IDisposable
     public async Task Administrator_keeps_the_deepseek_key_and_picks_a_model_per_role()
     {
         var vm = await SettingsFor("adm.carlos");
-        Assert.Equal(["DeepSeek"], vm.ProviderRows.Select(r => r.Name));
-        Assert.Equal([LlmProviderKind.DeepSeek], vm.KeyProviders.Select(p => p.Kind));
+        Assert.Equal(["DeepSeek", "OpenRouter"], vm.ProviderRows.Select(r => r.Name));
+        Assert.Equal([LlmProviderKind.DeepSeek, LlmProviderKind.OpenRouter], vm.KeyProviders.Select(p => p.Kind));
 
         vm.ApiKey = "sk-nexus-test-0123456789";
         await vm.SaveKeyCommand.ExecuteAsync(null);
@@ -120,6 +120,45 @@ public sealed class SettingsViewModelTests : IDisposable
         Assert.Equal(8099, _app.Host.LlmSettings.LocalPort);
         Assert.Equal(2, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'llm.model.set'"));
         Assert.Equal(0, Count("SELECT COUNT(*) FROM audit_log WHERE COALESCE(details_json, '') LIKE '%sk-nexus-test%'"));
+    }
+
+    [Fact]
+    public async Task Administrator_keeps_an_openrouter_key_and_types_a_model()
+    {
+        var vm = await SettingsFor("adm.carlos");
+        vm.SelectedKeyProvider = vm.KeyProviders.Single(p => p.Kind == LlmProviderKind.OpenRouter);
+        vm.ApiKey = "sk-or-v1-" + new string('0', 64);
+        await vm.SaveKeyCommand.ExecuteAsync(null);
+        Assert.True(_app.Host.LlmSettings.IsConfiguredFor(LlmProviderKind.OpenRouter));
+        Assert.False(_app.Host.LlmSettings.IsConfiguredFor(LlmProviderKind.DeepSeek));
+        Assert.Equal(1, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'llm.key.set' AND target = 'llm:openrouter'"));
+
+        // DeepSeek models are a fixed list; OpenRouter suggests some and accepts a typed id.
+        Assert.False(vm.PlannerAcceptsAnyModel);
+        vm.PlannerProvider = vm.PlannerProviders.Single(p => p.Kind == LlmProviderKind.OpenRouter);
+        for (var i = 0; i < 50 && vm.IsWorking; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+        Assert.True(vm.PlannerAcceptsAnyModel);
+        Assert.Equal(LlmSettings.OpenRouterSuggestedModels, vm.PlannerModels);
+        Assert.Equal(new LlmChoice(LlmProviderKind.OpenRouter, LlmSettings.OpenRouterSuggestedModels[0]),
+            _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner));
+
+        vm.PlannerModelText = "Nao/E-Valido";
+        vm.ApplyPlannerModelCommand.Execute(null);
+        Assert.True(vm.FeedbackIsError);
+        Assert.Equal(LlmSettings.OpenRouterSuggestedModels[0], _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner).Model);
+
+        vm.PlannerModelText = "  meta-llama/llama-3.3-70b-instruct ";
+        vm.ApplyPlannerModelCommand.Execute(null);
+        for (var i = 0; i < 50 && vm.IsWorking; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+        Assert.Equal(new LlmChoice(LlmProviderKind.OpenRouter, "meta-llama/llama-3.3-70b-instruct"),
+            _app.Host.LlmSettings.ChoiceFor(LlmUseRole.Planner));
+        Assert.Contains("meta-llama/llama-3.3-70b-instruct", vm.PlannerModels);
+        Assert.Contains("usada em planejamento", vm.ProviderRows.Single(r => r.Name == "OpenRouter").StatusText);
+
+        // Reopening the screen shows the typed model.
+        var again = await SettingsFor("adm.carlos");
+        Assert.Equal("meta-llama/llama-3.3-70b-instruct", again.PlannerModel);
+        Assert.Equal(0, Count("SELECT COUNT(*) FROM audit_log WHERE COALESCE(details_json, '') LIKE '%sk-or-v1%'"));
     }
 
     [Fact]

@@ -66,8 +66,9 @@ flowchart TB
         end
     end
 
-    subgraph EXT["Provedor externo · HTTPS · sem dados sensíveis"]
+    subgraph EXT["Provedores externos · HTTPS · sem dados sensíveis"]
         DS["DeepSeek API<br/>deepseek-flash · deepseek-v4-pro opcional"]
+        OR["OpenRouter<br/>modelos gratuitos para demonstração"]
     end
 
     subgraph FT["Fine-tuning · offline"]
@@ -87,6 +88,8 @@ flowchart TB
     RM -- "sem receita" --> PL
     RM <--> DS
     PL <--> DS
+    RM <-.-> OR
+    PL <-.-> OR
     PL --> ROCONN --> DATA
     PL --> HYB --> AIDATA
     CHK --> EMB --> AIDATA
@@ -299,6 +302,10 @@ classDiagram
         -string Endpoint
         +TestConnectionAsync() Task
     }
+    class OpenRouterProvider {
+        -string Endpoint
+        +TestConnectionAsync() Task
+    }
     class LlmSettings {
         +bool IsConfigured
         +string Model
@@ -306,7 +313,9 @@ classDiagram
         +ClearKey()
     }
     ILlmProvider <|.. DeepSeekProvider : feature 3
+    ILlmProvider <|.. OpenRouterProvider : feature 8
     DeepSeekProvider --> LlmSettings : chave no cofre do SO
+    OpenRouterProvider --> LlmSettings : chave no cofre do SO
 
     class Planner {
         +RunAsync(UserSession user, PlannerTurn[] history, string request) Task~PlannerResult~
@@ -599,13 +608,13 @@ Permissão e regras de cada uma em [`references/ARQUITETURA.md`](references/ARQU
     - a IA nunca aprova;
     - o que pode rodar é decidido pelos direitos de quem pediu, não de quem aprova.
   - **Tela "Novo plano":** formulários gerados do catálogo, com listas de escolha e o próximo código livre. Monta o plano sem LLM, mostra a pré-visualização e envia.
-  - **Atualização de bancos antigos:** um banco existente é atualizado na abertura por migrações versionadas (`db/migrations/`), até a versão 10 (vetores do RAG e cache de prompt).
+  - **Atualização de bancos antigos:** um banco existente é atualizado na abertura por migrações versionadas (`db/migrations/`), até a versão 11 (vetores do RAG, cache de prompt e custo informado pela OpenRouter).
 
 ## Parte de integração
 
 - **Diagrama único** juntando banco, LLM e RAG, com permissões, proteção de dados e auditoria marcadas: seção [Diagrama da arquitetura](#diagrama-da-arquitetura) acima, incluindo os ataques.
 - **Matriz ampliada com a IA:** a IA lê só as views `v_ai_*` por uma conexão somente leitura e age com a **interseção** dos seus direitos com os de quem pediu. Ela nunca aprova nada, não vê dados sensíveis e não grava skills (as próprias instruções). Desde 2026-11-08 ela tem os direitos operacionais do usuário (ajuste, expedição, cadastros e pedidos), com confirmação de quem pediu e aprovação de outro supervisor para críticos.
-- **Ataques testados:** prompt injection (5 vetores) e SQL injection + escalonamento de privilégio, automatizados em `db/tests/test_db.py` (115 testes) e nos testes do app em `tests/Nexus.Tests` (1446 testes, incluindo o *authorizer* da IA, o bloqueio de login, o isolamento entre armazéns, a detecção de adulteração da auditoria, planos maliciosos e a segregação de funções na aprovação): [`references/SEGURANCA_DADOS.md`](references/SEGURANCA_DADOS.md), seção 6.
+- **Ataques testados:** prompt injection (5 vetores) e SQL injection + escalonamento de privilégio, automatizados em `db/tests/test_db.py` (115 testes) e nos testes do app em `tests/Nexus.Tests` (1479 testes, incluindo o *authorizer* da IA, o bloqueio de login, o isolamento entre armazéns, a detecção de adulteração da auditoria, planos maliciosos e a segregação de funções na aprovação): [`references/SEGURANCA_DADOS.md`](references/SEGURANCA_DADOS.md), seção 6.
 - **Suíte de 25 ataques com métricas (feature 6):** o modelo é simulado obedecendo à injeção, e as defesas fora dele seguram tudo. Resultado: **0% de sucesso dos ataques e 100% de detecção**. Textos suspeitos nos dados são marcados, auditados como `ai.injection` e avisados ao operador. A auditoria mascara CPF, CNPJ, e-mail, telefone e chaves antes do hash.
 - **Operação (feature 9):**
   - **Backup:** backup criptografado diário pela API do SQLite (mesma chave do SQLCipher, 7 cópias). O administrador também faz e restaura backups, e a restauração é verificada antes.
@@ -656,7 +665,7 @@ No primeiro uso o app cria o banco criptografado a partir dos scripts de `db/` e
 
 Os poderes de cada papel estão na tabela da [Parte de Segurança](#parte-de-segurança).
 
-Para o **Nexus** conversar, o administrador (`adm.carlos`) cola a chave de API da DeepSeek em **Configurações → Provedor de LLM**. A chave vai para o cofre do sistema, nunca para o banco nem para o repositório. Depois disso, peça em linguagem natural. Exemplos:
+Para o **Nexus** conversar, o administrador (`adm.carlos`) cola a chave de API da DeepSeek em **Configurações → Provedor de LLM**. Para apresentações e testes, dá para usar a OpenRouter com um modelo gratuito: escolha OpenRouter na linha da chave e no modelo de planejamento. Os modelos gratuitos podem guardar os dados enviados, então use a OpenRouter só com os dados fictícios do repositório. A chave vai para o cofre do sistema, nunca para o banco nem para o repositório. Depois disso, peça em linguagem natural. Exemplos:
 - "guarde as 40 caixas do ABC-123 da doca em A-02-01": o Nexus consulta o estoque pelas views `v_ai_*` e devolve uma **proposta** com o efeito simulado;
 - "guarde 10 cx do ABC-123 em Q-01-01", com a zona Q ainda inexistente: o Nexus propõe, num só plano, a zona Q, os endereços e a movimentação, e lista as suposições (capacidade, por exemplo);
 - "quais endereços da zona A têm espaço para 40 caixas?": o Nexus consulta e responde, e pode oferecer os próximos passos como botões.

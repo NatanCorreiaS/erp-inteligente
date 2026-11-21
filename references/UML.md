@@ -157,6 +157,10 @@ classDiagram
         -string Endpoint
         +TestConnectionAsync() Task
     }
+    class OpenRouterProvider {
+        -string Endpoint
+        +TestConnectionAsync() Task
+    }
     class LlmSettings {
         +bool IsConfigured
         +string Model
@@ -164,7 +168,9 @@ classDiagram
         +ClearKey()
     }
     ILlmProvider <|.. DeepSeekProvider : feature 3
+    ILlmProvider <|.. OpenRouterProvider : feature 8
     DeepSeekProvider --> LlmSettings : chave no cofre do SO
+    OpenRouterProvider --> LlmSettings : chave no cofre do SO
 
     class Planner {
         +RunAsync(UserSession user, PlannerTurn[] history, string request) Task~PlannerResult~

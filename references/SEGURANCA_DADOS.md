@@ -133,6 +133,7 @@ Memórias e trechos de procedimento entram no contexto da IA. Uma memória malic
 4. **Isolamento:** toda leitura e escrita é filtrada pelo armazém da sessão; a IA não lê as tabelas diretamente.
 5. **Rastreabilidade:** cada gravação, reforço, correção e arquivamento é auditado sem o conteúdo, e o contexto injetado é auditado (`ai.context`) com ids e caminhos.
 6. **Embeddings (busca híbrida, 2026-11-11):** desligados por padrão; só o administrador escolhe o provedor (auditado como `llm.embedding.set`). A pergunta vai ao servidor de embeddings mascarada pelo `SensitiveDataRedactor`; o cliente só aceita `http://127.0.0.1` (nada sai da máquina, não há chave) e não segue redirecionamentos, e o erro nunca leva o texto nem o corpo. Os vetores ficam em `knowledge_embeddings`, que a conexão da IA não lê (*authorizer*). O `sqlite-vec` é carregado só na conexão da aplicação e o carregamento de extensões volta a ficar desligado logo depois (a função SQL `load_extension()` continua recusada). Um trecho entra no contexto só pelo significado apenas acima do limiar de contexto, e o detector de injeção examina o trecho do mesmo jeito que os achados por palavra.
+7. **OpenRouter (2026-11-21):** o contexto da IA (pedido, memórias, trechos e resultados das ferramentas) vai também para a OpenRouter quando o administrador a escolhe. Para usar os modelos gratuitos, a coleta de dados pelos provedores fica permitida, então esse provedor só deve ver os dados fictícios do repositório. As demais proteções são as mesmas da DeepSeek: a IA lê só as views `v_ai_*`, que não têm colunas sensíveis; a chave fica no cofre do SO; o host é fixo e não há redirecionamento. A troca de provedor é feita só pelo administrador e fica na auditoria (`llm.model.set`).
 
 Risco residual: um fato operacional errado, mas inofensivo na forma, passa no filtro. Por isso a tela Memórias mostra origem, confiança e uso, e o motor continua validando todo plano.
 
@@ -274,7 +275,7 @@ dotnet test tests/Nexus.Tests --filter "FullyQualifiedName~PromptInjectionSuite"
 | Backup: cópia legível sem a chave, backup de outra máquina (outra chave), nome de arquivo com `../`, cadeia de auditoria adulterada no backup, backup ou restauração por quem não é administrador | `BackupServiceTests` e `OperationsViewModelTests` (C#) | Automatizado ✅ |
 | Consumo de tokens: alteração ou exclusão de `llm_usage`, valores fora da lista (inclusive tokens de cache negativos ou maiores que a entrada), leitura pela IA, relatório sem `audit.read` | `LlmUsageTests` e `MigrationTests` (C#); `LlmUsageTests`, `MigrationTo8Tests` e `MigrationTo10Tests` (Python) | Automatizado ✅ |
 | Manutenção de memórias: arquivar memória do supervisor, apagar em vez de arquivar, texto da memória na auditoria, execução por quem não é supervisor | `MemoryMaintenanceTests` (C#) | Automatizado ✅ |
-| Provedores: chave da DeepSeek em erros (401, 429, 5xx, 400), modelo local fora de `127.0.0.1` ou com chave, modelo local no planejamento, provedor desconhecido gravado na configuração, troca de modelo por quem não é administrador | `DeepSeekProviderTests`, `ProviderRoutingTests`, `ModelPerRoleTests` e `SettingsViewModelTests` (C#) | Automatizado ✅ |
+| Provedores: chave da DeepSeek ou da OpenRouter em erros (401, 402, 429, 5xx, 400), redirecionamento para outro host, erro dentro de um 200 aceito como resposta, id de modelo da OpenRouter fora do formato, modelo local fora de `127.0.0.1` ou com chave, modelo local no planejamento, provedor desconhecido gravado na configuração, troca de modelo por quem não é administrador | `DeepSeekProviderTests`, `OpenRouterProviderTests`, `ProviderRoutingTests`, `ModelPerRoleTests` e `SettingsViewModelTests` (C#) | Automatizado ✅ |
 | CPF, CNPJ, e-mail, telefone, chave ou senha chegando à auditoria (mascarados antes do hash, cadeia válida) | `SensitiveDataRedactorTests` (C#) | Automatizado ✅ |
 | Dado hostil marcado, auditado como `ai.injection` e avisado; mensagens próprias e argumentos ecoados não são examinados | `InjectionDefenseTests` e `InjectionDetectorTests` (C#) | Automatizado ✅ |
 | Suíte de 25 ataques de prompt injection, exfiltração e SQL injection com métricas | `PromptInjectionSuiteTests` (C#) | Automatizado ✅ |
@@ -285,5 +286,5 @@ dotnet test tests/Nexus.Tests --filter "FullyQualifiedName~PromptInjectionSuite"
 
 ```bash
 python3 -m unittest discover -s db/tests -v   # 115 testes
-dotnet test tests/Nexus.Tests                 # 1445 testes do app
+dotnet test tests/Nexus.Tests                 # 1479 testes do app
 ```

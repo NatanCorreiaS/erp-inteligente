@@ -26,6 +26,7 @@ public sealed class MigrationTests : IDisposable
     private static readonly string[] Version7Scripts = ["schema_v7.sql", "security_v7.sql", "seed_v7.sql"];
     private static readonly string[] Version8Scripts = ["schema_v8.sql", "security_v8.sql", "seed_v8.sql"];
     private static readonly string[] Version9Scripts = ["schema_v9.sql", "security_v9.sql", "seed_v9.sql"];
+    private static readonly string[] Version10Scripts = ["schema_v10.sql", "security_v10.sql", "seed_v10.sql"];
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "nexus-tests-" + Guid.NewGuid().ToString("N"));
     private readonly InMemorySecretStore _store = new();
@@ -78,11 +79,19 @@ public sealed class MigrationTests : IDisposable
     private NexusDatabase Open(string? path = null) =>
         DatabaseBootstrapper.OpenOrCreate(path ?? _path, new KeyManager(_store));
 
-    /// <summary>Checks the current schema (version 10): migrations/010_llm_usage_cache.sql on top of the version 9 objects.</summary>
+    /// <summary>Checks the current schema (version 11): migrations/011_llm_usage_openrouter.sql on top of the version 10 objects.</summary>
+    private static void AssertVersion11Schema(SqliteConnection c)
+    {
+        Assert.Equal(11L, Scalar(c, "PRAGMA user_version"));
+        Assert.EndsWith(",cache_write_tokens,cost_usd", ColumnList(c, "llm_usage"));
+        Assert.Contains("'openrouter'", (string)Scalar(c, "SELECT sql FROM sqlite_schema WHERE name = 'llm_usage'")!);
+        AssertVersion10Schema(c);
+    }
+
+    /// <summary>Checks what migrations/010_llm_usage_cache.sql must have produced on top of the version 9 objects.</summary>
     private static void AssertVersion10Schema(SqliteConnection c)
     {
-        Assert.Equal(10L, Scalar(c, "PRAGMA user_version"));
-        Assert.EndsWith(",result,cache_read_tokens,cache_write_tokens", ColumnList(c, "llm_usage"));
+        Assert.Contains(",result,cache_read_tokens,cache_write_tokens", ColumnList(c, "llm_usage"));
         AssertVersion9Schema(c);
     }
 
@@ -207,7 +216,7 @@ public sealed class MigrationTests : IDisposable
         using var db = Open();
         using var c = db.OpenApplication();
 
-        AssertVersion10Schema(c);
+        AssertVersion11Schema(c);
     }
 
     [Fact]
@@ -217,7 +226,7 @@ public sealed class MigrationTests : IDisposable
         using var db = Open(path);
         using var c = db.OpenApplication();
 
-        AssertVersion10Schema(c);
+        AssertVersion11Schema(c);
         Assert.Equal(13L, Scalar(c, "SELECT count(*) FROM stock_balances"));
         Assert.True(AuditVerifier.Verify(c).IsValid);
     }
@@ -229,7 +238,7 @@ public sealed class MigrationTests : IDisposable
         using var db = Open(path);
         using var c = db.OpenApplication();
 
-        AssertVersion10Schema(c);
+        AssertVersion11Schema(c);
         Assert.Equal(13L, Scalar(c, "SELECT count(*) FROM stock_balances"));
         Assert.True(AuditVerifier.Verify(c).IsValid);
     }
@@ -241,7 +250,7 @@ public sealed class MigrationTests : IDisposable
         using var db = Open(path);
         using var c = db.OpenApplication();
 
-        AssertVersion10Schema(c);
+        AssertVersion11Schema(c);
         Assert.Equal(2L, Scalar(c, "SELECT count(*) FROM plans"));
         Assert.Equal(13L, Scalar(c, "SELECT count(*) FROM stock_balances"));
         Assert.Equal(2L, Scalar(c, "SELECT count(*) FROM order_reservations"));
@@ -256,7 +265,7 @@ public sealed class MigrationTests : IDisposable
         using var db = Open(path);
         using var c = db.OpenApplication();
 
-        AssertVersion10Schema(c);
+        AssertVersion11Schema(c);
         Assert.Equal(2L, Scalar(c, "SELECT count(*) FROM plans"));
         Assert.Equal(13L, Scalar(c, "SELECT count(*) FROM stock_balances"));
         Assert.Equal(4L, Scalar(c, "SELECT count(*) FROM audit_log"));
@@ -270,7 +279,7 @@ public sealed class MigrationTests : IDisposable
         using var db = Open(path);
         using var c = db.OpenApplication();
 
-        AssertVersion10Schema(c);
+        AssertVersion11Schema(c);
         Assert.Equal(2L, Scalar(c, "SELECT count(*) FROM plans"));
         Assert.Equal(4L, Scalar(c, "SELECT count(*) FROM memories"));
         Assert.Equal(4L, Scalar(c, "SELECT count(*) FROM audit_log"));
@@ -289,7 +298,7 @@ public sealed class MigrationTests : IDisposable
         using var db = Open(path);
         using var c = db.OpenApplication();
 
-        AssertVersion10Schema(c);
+        AssertVersion11Schema(c);
         Assert.Equal(4L, Scalar(c, "SELECT count(*) FROM audit_log"));
         Assert.True(AuditVerifier.Verify(c).IsValid);
         Exec(c, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result) " +
@@ -304,7 +313,7 @@ public sealed class MigrationTests : IDisposable
         using var db = Open(path);
         using var c = db.OpenApplication();
 
-        AssertVersion10Schema(c);
+        AssertVersion11Schema(c);
         Assert.True(AuditVerifier.Verify(c).IsValid);
         Exec(c, "INSERT INTO knowledge_chunks (id, source_path, heading, content, token_count, sha256) VALUES (900, 'knowledge/x.md', 'X', 'texto', 1, 'abc')");
         Exec(c, "INSERT INTO knowledge_embeddings (chunk_id, model, dimensions, sha256, embedding, created_at) " +
@@ -322,7 +331,7 @@ public sealed class MigrationTests : IDisposable
         using var db = Open(path);
         using var c = db.OpenApplication();
 
-        AssertVersion10Schema(c);
+        AssertVersion11Schema(c);
         Assert.True(AuditVerifier.Verify(c).IsValid);
         Exec(c, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result) " +
                 "VALUES ('2026-11-11T10:00:00Z', 'planner', 'deepseek', 'deepseek-v4-pro', 1, 10, 5, 'answer')");
@@ -330,6 +339,38 @@ public sealed class MigrationTests : IDisposable
         Assert.Contains("CHECK", Assert.Throws<SqliteException>(() =>
             Exec(c, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result, cache_read_tokens) " +
                     "VALUES ('2026-11-11T10:00:00Z', 'planner', 'deepseek', 'm', 1, 10, 5, 'answer', -1)")).Message);
+    }
+
+    [Fact]
+    public void Version_10_database_is_upgraded_to_11_keeping_usage_rows_and_their_guards()
+    {
+        var path = CreateLegacyDatabase("v10.db", 10, Version10Scripts);
+        using (var legacy = new SqliteConnection($"Data Source={path};Mode=ReadWrite;Pooling=False"))
+        {
+            legacy.Open();
+            NexusDatabase.ApplyKey(legacy, _store.Get(path, KeyManager.SqlCipherKeyName)!);
+            Exec(legacy, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result, cache_read_tokens) " +
+                         "VALUES ('2026-11-16T10:00:00Z', 'planner', 'deepseek', 'deepseek-flash', 2, 100, 20, 'answer', 40)");
+        }
+        using var db = Open(path);
+        using var c = db.OpenApplication();
+
+        AssertVersion11Schema(c);
+        Assert.True(AuditVerifier.Verify(c).IsValid);
+        // The old row survives as it was, without a reported cost.
+        Assert.Equal("deepseek|100|40|1", Scalar(c, "SELECT provider || '|' || prompt_tokens || '|' || cache_read_tokens || '|' || (cost_usd IS NULL) FROM llm_usage"));
+        Exec(c, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result, cost_usd) " +
+                "VALUES ('2026-11-21T10:00:00Z', 'planner', 'openrouter', 'google/gemma-4-31b-it:free', 1, 10, 5, 'answer', 0)");
+        Assert.Contains("CHECK", Assert.Throws<SqliteException>(() =>
+            Exec(c, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result, cost_usd) " +
+                    "VALUES ('2026-11-21T10:00:00Z', 'planner', 'openrouter', 'm/x', 1, 10, 5, 'answer', -0.5)")).Message);
+        Assert.Contains("CHECK", Assert.Throws<SqliteException>(() =>
+            Exec(c, "INSERT INTO llm_usage (occurred_at, role, provider, model, calls, prompt_tokens, completion_tokens, result) " +
+                    "VALUES ('2026-11-21T10:00:00Z', 'planner', 'outro', 'm', 1, 10, 5, 'answer')")).Message);
+        // The rebuilt table is still append-only.
+        Assert.Contains("DENY", Assert.Throws<SqliteException>(() => Exec(c, "UPDATE llm_usage SET prompt_tokens = 0")).Message);
+        Assert.Contains("DENY", Assert.Throws<SqliteException>(() => Exec(c, "DELETE FROM llm_usage")).Message);
+        Assert.Equal(1L, Scalar(c, "SELECT count(*) FROM sqlite_schema WHERE name = 'llm_usage_by_time'"));
     }
 
     [Fact]

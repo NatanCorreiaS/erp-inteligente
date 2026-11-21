@@ -12,12 +12,14 @@ namespace erp_inteligente.Core.Operations;
 
 /// <summary>
 /// What one request consumed in one role: tokens summed over its calls. Never the text. The cache counts are the part of
-/// <see cref="PromptTokens"/> read from or written to the provider's prompt cache.
+/// <see cref="PromptTokens"/> read from or written to the provider's prompt cache. <see cref="Cost"/> is the cost in US$
+/// reported by the provider (OpenRouter), null when it reports none.
 /// </summary>
 public sealed record LlmUsageEntry(LlmUseRole Role, LlmChoice Choice, int Calls, int PromptTokens, int CompletionTokens, string Result)
 {
     public int CacheReadTokens { get; init; }
     public int CacheWriteTokens { get; init; }
+    public decimal? Cost { get; init; }
 }
 
 /// <summary>One line of the cost panel: a role, provider and model in the period.</summary>
@@ -27,7 +29,8 @@ public sealed record UsageLine(
 
 /// <summary>
 /// Token usage of a period (feature 9). <see cref="Requests"/> counts operator requests: those planned by the Planner
-/// plus those solved by a recipe through the Matcher. Costs are estimates from <see cref="LlmPrices"/>, per currency.
+/// plus those solved by a recipe through the Matcher. Costs are what the provider reported (OpenRouter) or, otherwise,
+/// estimates from <see cref="LlmPrices"/>, per currency.
 /// </summary>
 public sealed record UsageReport(
     DateTimeOffset Since, long Requests, long ByRecipe, double AverageTokensPerRequest, IReadOnlyList<UsageLine> Lines,
@@ -54,8 +57,8 @@ public sealed class LlmUsageLog(NexusDatabase database, TimeProvider time, Polic
             using var command = connection.CreateCommand();
             command.CommandText =
                 "INSERT INTO llm_usage (occurred_at, user_id, warehouse_id, role, provider, model, calls, prompt_tokens, completion_tokens, result, " +
-                "cache_read_tokens, cache_write_tokens) " +
-                "VALUES ($at, $user, $warehouse, $role, $provider, $model, $calls, $prompt, $completion, $result, $cacheRead, $cacheWrite)";
+                "cache_read_tokens, cache_write_tokens, cost_usd) " +
+                "VALUES ($at, $user, $warehouse, $role, $provider, $model, $calls, $prompt, $completion, $result, $cacheRead, $cacheWrite, $cost)";
             command.Parameters.AddWithValue("$at", AuditHasher.FormatTimestamp(time.GetUtcNow()));
             command.Parameters.AddWithValue("$user", user.UserId);
             command.Parameters.AddWithValue("$warehouse", user.WarehouseId);
@@ -70,6 +73,7 @@ public sealed class LlmUsageLog(NexusDatabase database, TimeProvider time, Polic
             var cacheRead = Math.Clamp(entry.CacheReadTokens, 0, Math.Max(0, entry.PromptTokens));
             command.Parameters.AddWithValue("$cacheRead", cacheRead);
             command.Parameters.AddWithValue("$cacheWrite", Math.Clamp(entry.CacheWriteTokens, 0, Math.Max(0, entry.PromptTokens) - cacheRead));
+            command.Parameters.AddWithValue("$cost", entry.Cost is { } cost and >= 0 ? (double)cost : DBNull.Value);
             command.ExecuteNonQuery();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -90,7 +94,7 @@ public sealed class LlmUsageLog(NexusDatabase database, TimeProvider time, Polic
         command.CommandText =
             "SELECT role, provider, model, SUM(CASE WHEN role = 'planner' OR result = 'recipe' THEN 1 ELSE 0 END), COUNT(*), " +
             "SUM(calls), SUM(prompt_tokens), SUM(completion_tokens), SUM(CASE WHEN result = 'recipe' THEN 1 ELSE 0 END), " +
-            "SUM(cache_read_tokens), SUM(cache_write_tokens) " +
+            "SUM(cache_read_tokens), SUM(cache_write_tokens), SUM(cost_usd), COUNT(cost_usd) " +
             "FROM llm_usage WHERE occurred_at >= $since GROUP BY role, provider, model ORDER BY role DESC, SUM(prompt_tokens) DESC";
         command.Parameters.AddWithValue("$since", AuditHasher.FormatTimestamp(since));
 
@@ -107,10 +111,14 @@ public sealed class LlmUsageLog(NexusDatabase database, TimeProvider time, Polic
                 var prompt = reader.GetInt64(6);
                 var completion = reader.GetInt64(7);
                 var cacheRead = reader.GetInt64(9);
-                var price = LlmPrices.For(provider, model);
-                decimal? cost = price is null ? null : LlmPrices.Cost(price, prompt, completion, cacheRead);
+                // The cost the provider reported wins over the price table, when every row of the line has one.
+                var reported = reader.GetInt64(12) > 0 && reader.GetInt64(12) == reader.GetInt64(4);
+                var price = reported ? null : LlmPrices.For(provider, model);
+                var currency = reported ? "USD" : price?.Currency;
+                decimal? cost = reported ? (decimal)reader.GetDouble(11)
+                    : price is null ? null : LlmPrices.Cost(price, prompt, completion, cacheRead);
                 if (cost is { } value)
-                    costs[price!.Currency] = costs.GetValueOrDefault(price.Currency) + value;
+                    costs[currency!] = costs.GetValueOrDefault(currency!) + value;
                 else
                     unpriced += prompt + completion;
                 // Requests are counted where they end: a planner row, or a matcher row that solved the request.
@@ -118,7 +126,7 @@ public sealed class LlmUsageLog(NexusDatabase database, TimeProvider time, Polic
                 byRecipe += reader.GetInt64(8);
                 tokens += prompt + completion;
                 // Requests of a line: planner requests, or every request the Matcher looked at (matched or not).
-                lines.Add(new UsageLine(role, provider, model, reader.GetInt64(4), reader.GetInt64(5), prompt, completion, cost, price?.Currency, cacheRead));
+                lines.Add(new UsageLine(role, provider, model, reader.GetInt64(4), reader.GetInt64(5), prompt, completion, cost, currency, cacheRead));
             }
         }
         var average = requests == 0 ? 0 : (double)tokens / requests;

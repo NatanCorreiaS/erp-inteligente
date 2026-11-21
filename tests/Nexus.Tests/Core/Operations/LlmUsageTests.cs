@@ -108,6 +108,30 @@ public sealed class LlmUsageTests : IDisposable
     }
 
     [Fact]
+    public void A_cost_reported_by_openrouter_is_used_instead_of_the_price_table()
+    {
+        var free = new LlmChoice(LlmProviderKind.OpenRouter, "google/gemma-4-31b-it:free");
+        var paid = new LlmChoice(LlmProviderKind.OpenRouter, "deepseek/deepseek-v4.1-flash");
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, free, 4, 50_000, 2_000, "proposals") { Cost = 0m });
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, paid, 2, 10_000, 1_000, "answer") { Cost = 0.0012m });
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, paid, 1, 5_000, 500, "answer") { Cost = 0.0008m });
+        // A row without a reported cost leaves the whole line without a cost rather than a partial one.
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, paid, 1, 300, 20, "no_match") { Cost = 0.0001m });
+        _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Matcher, paid, 1, 300, 20, "no_match"));
+
+        var report = _usage.Report(_f.SessionFor("sup.maria"), _f.Time.GetUtcNow().AddDays(-1));
+
+        Assert.Equal(0m, report.Lines.Single(l => l.Model == free.Model).Cost);
+        var planner = report.Lines.Single(l => l.Role == LlmUseRole.Planner && l.Model == paid.Model);
+        Assert.Equal(0.0020m, planner.Cost!.Value, 6);
+        Assert.Equal("USD", planner.Currency);
+        Assert.Null(report.Lines.Single(l => l.Role == LlmUseRole.Matcher).Cost);
+        Assert.Equal(640, report.Unpriced);
+        Assert.Equal(0.0020m, report.CostByCurrency["USD"], 6);
+        Assert.Equal(3, Count("SELECT count(*) FROM llm_usage WHERE provider = 'openrouter' AND role = 'planner'"));
+    }
+
+    [Fact]
     public void Old_usage_is_outside_the_period()
     {
         _usage.Record(_joao, new LlmUsageEntry(LlmUseRole.Planner, new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.StrongModel), 1, 10, 10, "answer"));

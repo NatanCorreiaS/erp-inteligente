@@ -10,7 +10,13 @@
 | Receitas e extração de parâmetros | **`deepseek-flash`**, depois o modelo do fine-tuning | Tarefa curta e repetitiva; é o modelo mais barato do provedor. |
 | Embeddings do RAG | **Modelo local `nexus-embed`** (`paraphrase-multilingual-MiniLM-L12-v2`) | A DeepSeek não oferece embeddings. O modelo local roda em `127.0.0.1`, sem custo e sem envio de dados. |
 
-O único provedor externo é a **DeepSeek** (decisão de 2026-11-14). A interface `ILlmProvider` continua separando o app do provedor.
+Os provedores externos são a **DeepSeek**, o padrão, e a **OpenRouter** (decisão de 2026-11-21). A OpenRouter dá acesso a modelos gratuitos para apresentações e testes. Neles a coleta de dados pelo provedor fica permitida, então ela só deve ver os dados fictícios do repositório. A interface `ILlmProvider` continua separando o app do provedor.
+
+**OpenRouter (feature 8):**
+- **Modelos sugeridos:** `google/gemma-4-31b-it:free` e `nvidia/nemotron-3-ultra-550b-a55b:free` (gratuitos), `deepseek/deepseek-v4.1-flash` e `deepseek/deepseek-v4-pro`, todos com suporte a ferramentas em `GET /api/v1/models` (2026-11-21). Configurações aceita outro id `autor/modelo`.
+- **Custo:** a OpenRouter informa o custo de cada chamada (`usage.cost`, em US$). O painel usa esse valor em vez da tabela de preços. Nos modelos gratuitos ele é zero.
+- **Limite dos gratuitos:** os modelos `:free` têm limite de pedidos por minuto e por dia. Um pedido de planejamento faz várias chamadas, então o conjunto de 50 pedidos de `tools/eval` estoura esse limite. Numa rodada de teste em 2026-11-21 com `google/gemma-4-31b-it:free`, o primeiro pedido passou e os demais pararam no limite. Para medir um modelo da OpenRouter, use um pago ou rode poucos pedidos (`--limit`).
+- **Avaliação:** `OPENROUTER_API_KEY=... dotnet run --project tools/Nexus.Eval -- --suites planning --planner openrouter:<id>`.
 
 **Estado da implementação (feature 3):** o adaptador implementado é o da **DeepSeek**.
 - **Modelos:** `deepseek-flash` no Planner por padrão, ou `deepseek-v4-pro`, escolhidos em Configurações. `deepseek-flash` é o id que a API aceita; em 2026-11-14 a documentação da DeepSeek informa que ele é servido pelo DeepSeek-V4.1-Flash, e não existe um id `deepseek-v4.1-flash`.

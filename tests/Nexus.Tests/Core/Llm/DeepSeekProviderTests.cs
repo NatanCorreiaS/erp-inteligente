@@ -198,6 +198,16 @@ public class DeepSeekProviderTests
         AssertNoKey(e);
     }
 
+    [Fact]
+    public async Task NoBalance_IsPaymentRequired_WithoutRetry()
+    {
+        var (p, h) = Make((_, _) => Task.FromResult(Json(HttpStatusCode.PaymentRequired, "{\"error\":{\"message\":\"Insufficient Balance\"}}")));
+        var e = await Assert.ThrowsAsync<LlmException>(() => p.CompleteAsync(Req(), CancellationToken.None));
+        Assert.Equal(LlmErrorKind.PaymentRequired, e.Kind);
+        Assert.Single(h.Calls);
+        AssertNoKey(e);
+    }
+
     [Theory]
     [InlineData("not json")]
     [InlineData("{}")]

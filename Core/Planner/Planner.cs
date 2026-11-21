@@ -62,6 +62,7 @@ public sealed partial class Planner(
         {
             CacheReadTokens = state.CacheReadTokens,
             CacheWriteTokens = state.CacheWriteTokens,
+            Cost = state.Cost,
         });
     }
 
@@ -121,9 +122,12 @@ public sealed partial class Planner(
         public int CompletionTokens { get; set; }
         public int CacheReadTokens { get; set; }
         public int CacheWriteTokens { get; set; }
+        /// <summary>Cost in US$ reported by the provider; null while no call reported one.</summary>
+        public decimal? Cost { get; set; }
 
         public void Count(LlmResponse response)
         {
+            if (response.Usage.Cost is { } cost) Cost = (Cost ?? 0) + cost;
             PromptTokens += Math.Max(0, response.Usage.PromptTokens);
             CompletionTokens += Math.Max(0, response.Usage.CompletionTokens);
             CacheReadTokens += Math.Max(0, response.Usage.CacheReadTokens);
@@ -285,7 +289,7 @@ public sealed partial class Planner(
             }
 
             if (state.Proposals.Count >= _options.MaxProposals)
-                return Flag(await FinalTextAsync(user, request, state, messages, tokens, ct));
+                return Flag(await FinalTextAsync(user, request, state, messages, tools, tokens, ct));
 
             if (state.Invalid >= _options.MaxInvalidPlans)
                 return Limit(new PlannerEscalated(
@@ -297,9 +301,13 @@ public sealed partial class Planner(
             "O pedido exigiu consultas demais e não foi concluído. Tente dividi-lo em partes menores."));
     }
 
-    /// <summary>The proposal limit was reached: one more round without tools asks the model for the closing text.</summary>
+    /// <summary>
+    /// The proposal limit was reached: one more round asks the model for the closing text. The tools stay in the request
+    /// (OpenRouter requires them whenever the history has tool calls), but calling one is forbidden.
+    /// </summary>
     private async Task<(PlannerResult, PlannerTurn?)> FinalTextAsync(
-        UserSession user, string request, RunState state, List<LlmMessage> messages, int tokens, CancellationToken ct)
+        UserSession user, string request, RunState state, List<LlmMessage> messages, IReadOnlyList<LlmTool> tools, int tokens,
+        CancellationToken ct)
     {
         string? text = null;
         string? reasoning = null;
@@ -309,7 +317,7 @@ public sealed partial class Planner(
             {
                 state.Calls++;
                 var response = await llm.CompleteAsync(
-                    PlannerRequest(messages.ToArray(), []), ct);
+                    PlannerRequest(messages.ToArray(), tools, noToolCalls: true), ct);
                 state.Count(response);
                 if (response.ToolCalls.Count == 0 && CleanText(response.Content) is { Length: > 0 } cleaned)
                 {
@@ -1027,21 +1035,23 @@ public sealed partial class Planner(
 
     private string MessageFor(LlmErrorKind kind)
     {
-        const string provider = "DeepSeek";
+        var provider = LlmSettings.ProviderName(settings.ChoiceFor(LlmUseRole.Planner).Provider);
         return kind switch
         {
             LlmErrorKind.NotConfigured => $"Configure a chave da {provider} em Configurações (administrador).",
             LlmErrorKind.Unauthorized => $"A chave da {provider} foi recusada. Peça ao administrador para conferi-la em Configurações.",
+            LlmErrorKind.PaymentRequired => $"A conta da {provider} está sem saldo ou créditos. Avise o administrador.",
             LlmErrorKind.InvalidResponse => "O provedor devolveu uma resposta inválida. Tente de novo.",
             _ => "O provedor de IA está indisponível no momento. Tente de novo em instantes.",
         };
     }
 
     /// <summary>The planning request: the model and provider configured for the Planner role (feature 8).</summary>
-    private LlmRequest PlannerRequest(IReadOnlyList<LlmMessage> messages, IReadOnlyList<LlmTool> tools)
+    private LlmRequest PlannerRequest(IReadOnlyList<LlmMessage> messages, IReadOnlyList<LlmTool> tools, bool noToolCalls = false)
     {
         var choice = settings.ChoiceFor(LlmUseRole.Planner);
-        return new LlmRequest(choice.Model, messages, tools, _options.MaxTokensPerCall, Provider: choice.Provider);
+        return new LlmRequest(choice.Model, messages, tools, _options.MaxTokensPerCall, Provider: choice.Provider,
+            NoToolCalls: noToolCalls);
     }
 
     private static string Wrap(string source, string json, bool suspicious = false) =>

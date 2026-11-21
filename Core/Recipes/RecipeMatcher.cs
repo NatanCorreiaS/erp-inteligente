@@ -100,6 +100,7 @@ public sealed class RecipeMatcher(ILlmProvider llm, RecipeStore recipes, IAuditL
         {
             CacheReadTokens = tokens.CacheReadTokens,
             CacheWriteTokens = tokens.CacheWriteTokens,
+            Cost = tokens.Cost,
         });
 
 

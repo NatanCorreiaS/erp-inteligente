@@ -15,7 +15,7 @@
 
 ## Provedores de LLM
 
-O único provedor externo de LLM é a **DeepSeek** (decisão de 2026-11-14). O Recipe Matcher também pode usar um modelo local ajustado por fine-tuning, servido em `127.0.0.1`.
+Os provedores externos de LLM são a **DeepSeek**, o padrão, e a **OpenRouter** (decisão de 2026-11-21), usada para modelos gratuitos em apresentações e testes, só com dados fictícios. O Recipe Matcher também pode usar um modelo local ajustado por fine-tuning, servido em `127.0.0.1`.
 
 Embeddings do RAG: um modelo de embeddings local, servido em `127.0.0.1`. Modelos padrão e custos em [`IA.md`](IA.md).
 

@@ -58,15 +58,18 @@ public sealed class AppHost : IDisposable
         var settings = LlmSettings;
         var handler = ChatCompletionsProvider.CreateDefaultHandler();
         DeepSeekProvider? deepSeek = null;
+        OpenRouterProvider? openRouter = null;
         LocalProvider? local = null;
         if (llm is null)
         {
             deepSeek = new DeepSeekProvider(handler, () => settings.ReadKey(LlmProviderKind.DeepSeek));
+            openRouter = new OpenRouterProvider(handler, () => settings.ReadKey(LlmProviderKind.OpenRouter));
             local = new LocalProvider(handler, () => settings.LocalPort);
         }
         Llm = llm ?? new LlmRouter(new Dictionary<LlmProviderKind, ILlmProvider>
         {
             [LlmProviderKind.DeepSeek] = deepSeek!,
+            [LlmProviderKind.OpenRouter] = openRouter!,
             [LlmProviderKind.Local] = local!,
         });
         // Feature 5: vectors of the procedures for the hybrid search; off until an administrator picks a provider.
@@ -77,6 +80,7 @@ public sealed class AppHost : IDisposable
         LlmSettingsService = new LlmSettingsService(LlmSettings, Policy, AuditLog, (provider, ct) => provider switch
         {
             LlmProviderKind.DeepSeek => deepSeek?.TestConnectionAsync(ct) ?? Task.CompletedTask,
+            LlmProviderKind.OpenRouter => openRouter?.TestConnectionAsync(ct) ?? Task.CompletedTask,
             _ => local?.TestConnectionAsync(LlmSettings.LocalModel, ct) ?? Task.CompletedTask,
         }, VectorIndex);
         SyncKnowledge(database);

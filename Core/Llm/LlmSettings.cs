@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using erp_inteligente.Core.Security;
 
 namespace erp_inteligente.Core.Llm;
@@ -11,9 +12,10 @@ namespace erp_inteligente.Core.Llm;
 /// Provider keys, the model of each role and the local model port, kept in the OS key store (never in SQLite).
 /// The members without a provider argument are DeepSeek's, as before feature 8.
 /// </summary>
-public sealed class LlmSettings(ISecretStore store, string databaseId)
+public sealed partial class LlmSettings(ISecretStore store, string databaseId)
 {
     public const string KeyEntry = "llm.deepseek.key";
+    public const string OpenRouterKeyEntry = "llm.openrouter.key";
     public const string ModelEntry = "llm.deepseek.model";
     public const string StrongModel = "deepseek-v4-pro";
     /// <summary>The API id of DeepSeek's Flash model (served by DeepSeek-V4.1-Flash; the id carries no version).</summary>
@@ -53,23 +55,50 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
 
     public static IReadOnlyList<string> SupportedModels { get; } = [StrongModel, FastModel];
 
+    /// <summary>
+    /// OpenRouter models suggested in Configurações, all with tool calling (checked in GET /api/v1/models on 2026-11-21):
+    /// two free ones for demos and tests, then DeepSeek's. Any other id in the <c>author/model</c> format is accepted.
+    /// </summary>
+    public static IReadOnlyList<string> OpenRouterSuggestedModels { get; } =
+    [
+        "google/gemma-4-31b-it:free",
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "deepseek/deepseek-v4.1-flash",
+        "deepseek/deepseek-v4-pro",
+    ];
+
+    /// <summary>Longest model id: the size of <c>llm_usage.model</c>.</summary>
+    public const int MaxModelIdLength = 80;
+
     /// <summary>The models offered for each provider. The local provider serves only the fine-tuned Matcher.</summary>
     public static IReadOnlyList<string> ModelsFor(LlmProviderKind provider) => provider switch
     {
         LlmProviderKind.DeepSeek => SupportedModels,
+        LlmProviderKind.OpenRouter => OpenRouterSuggestedModels,
         _ => [LocalModel],
     };
 
+    /// <summary>Whether the provider takes a model id typed by the administrator, beyond the suggested ones.</summary>
+    public static bool AcceptsAnyModel(LlmProviderKind provider) => provider == LlmProviderKind.OpenRouter;
+
+    /// <summary>An OpenRouter id: <c>author/model</c>, lower case, with an optional variant such as <c>:free</c>.</summary>
+    public static bool IsValidOpenRouterModel(string? model) =>
+        model is { Length: > 0 and <= MaxModelIdLength } && OpenRouterModelId().IsMatch(model);
+
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._:-]*$", RegexOptions.CultureInvariant)]
+    private static partial Regex OpenRouterModelId();
+
     /// <summary>Providers that may serve a role: the local fine-tuned model only recognises recipes, it never plans.</summary>
     public static IReadOnlyList<LlmProviderKind> ProvidersFor(LlmUseRole role) => role == LlmUseRole.Planner
-        ? [LlmProviderKind.DeepSeek]
-        : [LlmProviderKind.DeepSeek, LlmProviderKind.Local];
+        ? [LlmProviderKind.DeepSeek, LlmProviderKind.OpenRouter]
+        : [LlmProviderKind.DeepSeek, LlmProviderKind.OpenRouter, LlmProviderKind.Local];
 
     /// <summary>Providers that need an API key (the local server needs none).</summary>
-    public static IReadOnlyList<LlmProviderKind> KeyedProviders { get; } = [LlmProviderKind.DeepSeek];
+    public static IReadOnlyList<LlmProviderKind> KeyedProviders { get; } = [LlmProviderKind.DeepSeek, LlmProviderKind.OpenRouter];
 
     public static bool IsSupported(LlmChoice choice, LlmUseRole role) =>
-        ProvidersFor(role).Contains(choice.Provider) && ModelsFor(choice.Provider).Contains(choice.Model);
+        ProvidersFor(role).Contains(choice.Provider)
+        && (AcceptsAnyModel(choice.Provider) ? IsValidOpenRouterModel(choice.Model) : ModelsFor(choice.Provider).Contains(choice.Model));
 
     private readonly ISecretStore _store = store ?? throw new ArgumentNullException(nameof(store));
     private readonly string _databaseId = !string.IsNullOrEmpty(databaseId) ? databaseId : throw new ArgumentException("Database id is required.", nameof(databaseId));
@@ -120,6 +149,7 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
     private static string KeyName(LlmProviderKind provider) => provider switch
     {
         LlmProviderKind.DeepSeek => KeyEntry,
+        LlmProviderKind.OpenRouter => OpenRouterKeyEntry,
         _ => throw new ArgumentException("The local model has no key.", nameof(provider)),
     };
 
@@ -204,6 +234,7 @@ public sealed class LlmSettings(ISecretStore store, string databaseId)
     public static string ProviderName(LlmProviderKind provider) => provider switch
     {
         LlmProviderKind.DeepSeek => "DeepSeek",
+        LlmProviderKind.OpenRouter => "OpenRouter",
         _ => "Modelo local",
     };
 

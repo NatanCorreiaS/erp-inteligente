@@ -81,7 +81,7 @@ public sealed class ProposePlanTests : IDisposable
     }
 
     [Fact]
-    public async Task Three_alternatives_end_the_loop_with_one_final_round_without_tools()
+    public async Task Three_alternatives_end_the_loop_with_one_final_round_that_forbids_tool_calls()
     {
         _llm.Enqueue(Calls(Call("propose_plan", Plan("A", Move("A-02-01")), "1")))
             .Enqueue(Calls(Call("propose_plan", Plan("B", Move("A-02-02")), "2")))
@@ -93,7 +93,10 @@ public sealed class ProposePlanTests : IDisposable
         Assert.Equal(["A", "B", "C"], proposals.Items.Select(i => i.Title));
         Assert.Equal("Três opções.", proposals.Text);
         Assert.Equal(4, _llm.Requests.Count);
-        Assert.Empty(_llm.Requests[3].Tools);
+        // The tools stay in the request (OpenRouter requires them with a tool history), but calling one is forbidden.
+        Assert.Equal(_llm.Requests[0].Tools.Count, _llm.Requests[3].Tools.Count);
+        Assert.True(_llm.Requests[3].NoToolCalls);
+        Assert.False(_llm.Requests[0].NoToolCalls);
         Assert.Contains("Planos: A; B; C", turn!.Reply.Content);
     }
 

@@ -6,7 +6,7 @@ using erp_inteligente.Core.Security;
 
 namespace Nexus.Tests.Core.Llm;
 
-/// <summary>Feature 8: the DeepSeek and local model adapters, the router and the model per role.</summary>
+/// <summary>Feature 8: the DeepSeek, OpenRouter and local model adapters, the router and the model per role.</summary>
 public sealed class ProviderRoutingTests
 {
     private const string Key = "sk-test-MULTI-1234567890";
@@ -85,12 +85,16 @@ public sealed class ProviderRoutingTests
     {
         var deepSeek = new Recorder("deepseek");
         var local = new Recorder("local");
+        var openRouter = new Recorder("openrouter");
         var router = new LlmRouter(new Dictionary<LlmProviderKind, ILlmProvider>
         {
             [LlmProviderKind.DeepSeek] = deepSeek,
+            [LlmProviderKind.OpenRouter] = openRouter,
             [LlmProviderKind.Local] = local,
         });
         var ct = TestContext.Current.CancellationToken;
+
+        Assert.Equal("openrouter", (await router.CompleteAsync(new LlmRequest("a/b", [], [], 1, Provider: LlmProviderKind.OpenRouter), ct)).Content);
 
         Assert.Equal("local", (await router.CompleteAsync(new LlmRequest("m", [], [], 1, Provider: LlmProviderKind.Local), ct)).Content);
         Assert.Equal("deepseek", (await router.CompleteAsync(new LlmRequest("m", [], [], 1), ct)).Content);
@@ -135,6 +139,55 @@ public sealed class ProviderRoutingTests
         settings.LocalPort = 9000;
         Assert.Equal(9000, settings.LocalPort);
         Assert.Throws<ArgumentException>(() => settings.LocalPort = 22);
+    }
+
+    [Theory]
+    [InlineData("google/gemma-4-31b-it:free", true)]
+    [InlineData("deepseek/deepseek-v4.1-flash", true)]
+    [InlineData("meta-llama/llama-3.3-70b-instruct", true)]
+    [InlineData("gemma-4-31b-it", false)]          // no author
+    [InlineData("Google/Gemma", false)]            // upper case
+    [InlineData("a/b/c", false)]                   // two slashes
+    [InlineData("~anthropic/claude-latest", false)] // aliases are not accepted
+    [InlineData("a/b c", false)]
+    [InlineData("a/b\nc", false)]
+    [InlineData("", false)]
+    public void OpenRouter_accepts_any_author_model_id_in_both_roles(string model, bool valid)
+    {
+        var settings = new LlmSettings(new InMemorySecretStore(), "db1");
+        Assert.Equal(valid, LlmSettings.IsValidOpenRouterModel(model));
+        foreach (var role in new[] { LlmUseRole.Planner, LlmUseRole.Matcher })
+        {
+            var choice = new LlmChoice(LlmProviderKind.OpenRouter, model);
+            if (valid)
+            {
+                settings.SetChoice(role, choice);
+                Assert.Equal(choice, settings.ChoiceFor(role));
+            }
+            else
+            {
+                Assert.Throws<ArgumentException>(() => settings.SetChoice(role, choice));
+            }
+        }
+    }
+
+    [Fact]
+    public void OpenRouter_has_its_own_key_entry_and_a_too_long_id_is_refused()
+    {
+        var store = new InMemorySecretStore();
+        var settings = new LlmSettings(store, "db1");
+        Assert.Contains(LlmProviderKind.OpenRouter, LlmSettings.KeyedProviders);
+        settings.SetKey(LlmProviderKind.OpenRouter, "sk-or-v1-" + new string('a', 64));
+        Assert.True(settings.IsConfiguredFor(LlmProviderKind.OpenRouter));
+        Assert.False(settings.IsConfiguredFor(LlmProviderKind.DeepSeek));
+        Assert.NotNull(store.Get("db1", LlmSettings.OpenRouterKeyEntry));
+        Assert.Null(store.Get("db1", LlmSettings.KeyEntry));
+
+        Assert.False(LlmSettings.IsValidOpenRouterModel("a/" + new string('b', LlmSettings.MaxModelIdLength)));
+        // A stored id that is no longer valid falls back to the default.
+        store.Set("db1", "llm.role.matcher", Encoding.UTF8.GetBytes("openrouter:Invalido"));
+        Assert.Equal(new LlmChoice(LlmProviderKind.DeepSeek, LlmSettings.FastModel), settings.ChoiceFor(LlmUseRole.Matcher));
+        Assert.All(LlmSettings.OpenRouterSuggestedModels, m => Assert.True(LlmSettings.IsValidOpenRouterModel(m)));
     }
 
     [Fact]
