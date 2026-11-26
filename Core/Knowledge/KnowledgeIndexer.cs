@@ -24,6 +24,14 @@ public static class KnowledgeIndexer
     private const string ResourcePrefix = "Nexus.Knowledge.";
 
     /// <summary>The documents embedded in the assembly, sorted by path.</summary>
+    /// <summary>Document code ("POP-03") from the first heading ("# POP-03 Armazenagem (putaway)").</summary>
+    public static string DocumentCode(string markdown)
+    {
+        ArgumentNullException.ThrowIfNull(markdown);
+        var first = markdown.Split('\n', 2)[0].TrimStart('#', ' ');
+        return first.Split(' ', 2)[0].Trim();
+    }
+
     public static IReadOnlyList<KnowledgeSource> EmbeddedSources()
     {
         var assembly = typeof(KnowledgeIndexer).Assembly;

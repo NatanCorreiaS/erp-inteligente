@@ -28,6 +28,7 @@ internal static class SqliteFormat
         ["plan.failed"] = "Plano falhou",
         ["stock.adjust"] = "Ajuste de estoque",
         ["ai.tool"] = "Ferramenta do Nexus",
+        ["ai.response"] = "Resposta do Nexus",
         ["ai.context"] = "Contexto do Nexus",
         ["ai.injection"] = "Instrução suspeita",
         ["ai.recipe_match"] = "Reconhecimento de receita",

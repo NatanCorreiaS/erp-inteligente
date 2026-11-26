@@ -84,6 +84,9 @@ public sealed partial class Planner(
     private const int MaxToolCallsPerRound = 8;
     private const int MaxReportedErrors = 10;
     private const int MaxAuditArgsLength = 200;
+    private const int MaxAuditRequestChars = 500;
+    private const int MaxAuditResponseChars = 1000;
+    internal const int MaxCitedSources = 2;
     internal const int MaxMemoriesPerRequest = 2;
     internal const int MaxContextChars = 2500;
     private const int MaxContextMemories = 5;
@@ -114,6 +117,9 @@ public sealed partial class Planner(
 
         /// <summary>Memories the model had in front of it (automatic context and search_memories): recorded with its plans.</summary>
         public HashSet<long> MemoryIds { get; } = [];
+
+        /// <summary>Procedures (knowledge/*.md paths) the model had in front of it, in order of relevance: cited in the answer.</summary>
+        public List<string> KnowledgeSources { get; } = [];
         public bool HasResult => Proposals.Count > 0 || Skill is not null;
 
         /// <summary>Calls and tokens of the planning model in this request (feature 9: cost panel).</summary>
@@ -160,6 +166,10 @@ public sealed partial class Planner(
             Append(aiUserId, user, "ai.query", "permission:" + Permissions.StockRead, AuditOutcome.Denied, null);
             return (new PlannerFailed("Seu papel não permite consultas pelo Nexus."), null);
         }
+        // Who asked what (references/SEGURANCA_DADOS.md, section 6.3): the request is audited before any model call, and
+        // ai.response closes it with what the AI answered. The audit log masks personal data before hashing.
+        Append(aiUserId, user, "ai.query", "request", AuditOutcome.Allowed,
+            new JsonObject { ["request"] = Truncate(request, MaxAuditRequestChars) }.ToJsonString());
 
         var operations = OperationCatalog.V1.Where(o => rights.Contains(o.Permission)).ToList();
         var canPropose = rights.Contains(Permissions.PlanSubmit) && operations.Count > 0;
@@ -189,7 +199,10 @@ public sealed partial class Planner(
         {
             status.Report("Procurando receita");
             if (await TryRecipeAsync(user, aiUserId, rights, request, ct) is { } recipeResult)
+            {
+                AuditResponse(aiUserId, user, recipeResult.Result, state);
                 return recipeResult;
+            }
         }
 
         var messages = new List<LlmMessage> { LlmMessage.System(BuildSystemPrompt(user, operations, rights, canDraftSkill, canRemember, canSearchKnowledge)) };
@@ -225,6 +238,7 @@ public sealed partial class Planner(
         (PlannerResult, PlannerTurn?) Flag((PlannerResult Result, PlannerTurn? Turn) outcome)
         {
             RecordUsage(user, state, outcome.Result);
+            AuditResponse(aiUserId, user, outcome.Result, state);
             return (outcome.Result with { Suspicious = state.Suspicious.ToArray() }, outcome.Turn);
         }
 
@@ -263,6 +277,7 @@ public sealed partial class Planner(
                     return Flag(response.FinishReason == LlmFinishReason.Length
                         ? (new PlannerEscalated("A resposta ficou longa demais para ser concluída. Faça um pedido mais específico."), null)
                         : (new PlannerFailed("O Nexus não devolveu uma resposta válida. Tente de novo."), null));
+                text = CiteSources(text, state.KnowledgeSources);
                 return Flag((new PlannerAnswer(text, state.Options.ToArray()) { Remembered = state.Remembered.ToArray() }, Remember(request, text, response.ReasoningContent)));
             }
 
@@ -405,7 +420,13 @@ public sealed partial class Planner(
             if (invalid is not null) return Finish(invalid);
 
             status.Report(PlannerTools.StatusFor(name, args));
-            if (name == PlannerTools.SearchKnowledge) return Finish(PlannerTools.ExecuteSearchKnowledge(knowledge!, args));
+            if (name == PlannerTools.SearchKnowledge)
+            {
+                var found = PlannerTools.ExecuteSearchKnowledge(knowledge!, args);
+                foreach (var path in SourcesOf(found.Json))
+                    if (!state.KnowledgeSources.Contains(path, StringComparer.Ordinal)) state.KnowledgeSources.Add(path);
+                return Finish(found);
+            }
             if (name == PlannerTools.SearchMemories)
             {
                 var found = PlannerTools.ExecuteSearchMemories(memoryRetriever!, user, args);
@@ -516,6 +537,7 @@ public sealed partial class Planner(
                 var content = shortened.Replace("<", "\\u003c", StringComparison.Ordinal).Replace(">", "\\u003e", StringComparison.Ordinal);
                 builder.Append(Wrap(source, content, suspicious)).Append('\n');
                 if (!usedPaths.Contains(chunk.SourcePath, StringComparer.Ordinal)) usedPaths.Add(chunk.SourcePath);
+                if (!state.KnowledgeSources.Contains(chunk.SourcePath, StringComparer.Ordinal)) state.KnowledgeSources.Add(chunk.SourcePath);
             }
             if (builder.Length == 0) return string.Empty;
 
@@ -1076,11 +1098,67 @@ public sealed partial class Planner(
     }
 
     /// <summary>The ids of the memories in a search_memories result.</summary>
+    private static IEnumerable<string> SourcesOf(string json)
+    {
+        try
+        {
+            return JsonNode.Parse(json)?["hits"] is JsonArray rows
+                ? rows.Select(r => r?["source"] is JsonValue v && v.TryGetValue<string>(out var path) ? path : null).OfType<string>().ToList()
+                : [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Document code ("POP-03") of each embedded procedure, by path.</summary>
+    private static readonly Lazy<IReadOnlyDictionary<string, string>> DocumentCodes = new(() =>
+        KnowledgeIndexer.EmbeddedSources().ToDictionary(s => s.Path, s => KnowledgeIndexer.DocumentCode(s.Markdown), StringComparer.Ordinal));
+
+    /// <summary>
+    /// Mandatory citation (references/IA.md, section 5): an answer given with procedures in front of the model names at
+    /// least one of them. The prompt asks for it; when the model forgets, the codes of the most relevant documents (up to
+    /// <see cref="MaxCitedSources"/>) are appended. An answer that already cites one of them is left as it is.
+    /// </summary>
+    internal static string CiteSources(string text, IReadOnlyList<string> sources)
+    {
+        var codes = sources.Select(p => DocumentCodes.Value.GetValueOrDefault(p)).OfType<string>()
+            .Where(c => c.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+        if (codes.Count == 0) return text;
+        if (codes.Any(c => text.Contains(c, StringComparison.OrdinalIgnoreCase))) return text;
+        return text.TrimEnd() + "\nFonte: " + string.Join(", ", codes.Take(MaxCitedSources)) + ".";
+    }
+
+    /// <summary>What the AI answered, closing the ai.query of the same request (masked by the audit log before hashing).</summary>
+    private void AuditResponse(long? aiUserId, UserSession user, PlannerResult result, RunState state)
+    {
+        var (kind, text, outcome) = result switch
+        {
+            PlannerAnswer a => ("answer", a.Text, AuditOutcome.Allowed),
+            PlannerProposals p => ("proposals", (p.Text ?? "") + " Planos: " + string.Join("; ", p.Items.Select(i => i.Title)), AuditOutcome.Allowed),
+            PlannerEscalated e => ("escalated", e.Reason, AuditOutcome.Failed),
+            PlannerFailed f => ("failed", f.Reason, AuditOutcome.Failed),
+            _ => ("other", "", AuditOutcome.Allowed),
+        };
+        var details = new JsonObject
+        {
+            ["result"] = kind,
+            ["text"] = Truncate(text, MaxAuditResponseChars),
+            ["proposals"] = result is PlannerProposals ps ? ps.Items.Count : 0,
+            ["sources"] = new JsonArray(state.KnowledgeSources.Select(s => (JsonNode?)JsonValue.Create(s)).ToArray()),
+            ["suspicious"] = state.Suspicious.Count,
+        };
+        Append(aiUserId, user, "ai.response", "response", outcome, details.ToJsonString());
+    }
+
+    private static string Truncate(string text, int max) => text.Length <= max ? text : text[..max] + "…";
+
     private static IEnumerable<long> MemoryIdsOf(string json)
     {
         try
         {
-            return JsonNode.Parse(json)?["rows"] is JsonArray rows
+            return JsonNode.Parse(json)?["hits"] is JsonArray rows
                 ? rows.Select(r => r?["id"] is JsonValue v && v.TryGetValue<long>(out var id) ? id : 0).Where(id => id > 0).ToList()
                 : [];
         }

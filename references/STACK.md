@@ -11,7 +11,7 @@
 - **Dados internos:** SQLite, criptografado em repouso com **SQLCipher**.
 - **Busca:** FTS5 (texto) e **`sqlite-vec`** (vetores do RAG), no mesmo arquivo SQLite.
 - **Instruções para LLMs:** arquivos JSON e Markdown (`.md`).
-- **Não usados:** SQL Server, MongoDB e n8n não fazem parte do projeto.
+- **Fora do app:** SQL Server, MongoDB e n8n não fazem parte do app. Duas exceções, ambas fora dele, em Docker local: `db/sqlserver/` recria a matriz de papéis no SQL Server só para demonstrar `GRANT`/`DENY` nativos, e `n8n/` tem um fluxo de avaliação do RAG (decisão de 2026-11-26, entrega final).
 
 ## Provedores de LLM
 
