@@ -50,3 +50,6 @@ tools/finetune/data/
 
 # Installer builds
 installer/out/
+
+# Output of the local n8n run (n8n/README.md)
+n8n/out/

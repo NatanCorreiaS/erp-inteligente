@@ -206,7 +206,8 @@ As operações oferecidas vêm do direito efetivo (IA ∩ usuário), não da ski
   - `search_locations` com `zone` devolve também `next_free_codes` (próximos 5 códigos livres, únicos no sistema) e `typical_capacity`.
   - O custo unitário nunca é lido.
 - **Delimitação:** o resultado de cada ferramenta volta ao LLM entre `<dados fonte="tool:…">…</dados>`, com `<` e `>` escapados, e o prompt de sistema manda tratá-lo como dado.
-- **Auditoria:** cada chamada é auditada como `ai.tool` (permitida ou negada), em nome do usuário.
+- **Auditoria:** cada chamada é auditada como `ai.tool` (permitida ou negada), em nome do usuário. Desde 2026-11-26, o pedido é auditado como `ai.query` antes da primeira chamada ao LLM (até 500 caracteres), e o que a IA respondeu, como `ai.response` no fim, por qualquer caminho: tipo do resultado, texto até 1.000 caracteres, nº de propostas e fontes. Os dois passam pelo `SensitiveDataRedactor` antes do hash.
+- **Citação obrigatória:** a resposta baseada em procedimentos cita o código do documento (POP-03...). O prompt exige a citação; se o modelo esquece, o Planner acrescenta "Fonte: ..." com até 2 documentos que estavam no contexto ou em `search_knowledge` (`CiteSources`).
 - **Limites por pedido:**
   - 4 planos inválidos;
   - 12 rodadas com o LLM e até 8 chamadas de ferramenta por rodada;

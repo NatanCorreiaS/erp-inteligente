@@ -299,3 +299,90 @@ class TrainLabelTests(unittest.TestCase):
         self.assertEqual(len(row["labels"]), 10)
         self.assertTrue(all(t == train_lora.IGNORE for t in row["labels"]))
 
+
+
+import compare  # noqa: E402
+import predict_local  # noqa: E402
+import retrieve_examples  # noqa: E402
+
+
+class RetrieveExamplesTests(unittest.TestCase):
+    ROWS = [
+        {"id": "t1", "input": "guarde 10 cx do ABC-123 da doca 1 no A-01-01", "output": {"intent": "putaway"},
+         "messages": [{"role": "system", "content": "S"}, {"role": "user", "content": "u"},
+                      {"role": "assistant", "content": "{\"intent\": \"putaway\"}"}]},
+        {"id": "t2", "input": "baixa 3 LIM-200 no A-01-02 por avaria", "output": {"intent": "adjust"}},
+        {"id": "t3", "input": "qual a previsão do tempo amanhã", "output": {"intent": "none"}},
+    ]
+
+    def test_terms_fold_accents_and_keep_codes(self):
+        self.assertEqual(retrieve_examples.terms("Previsão do ABC-123 em A-01-02"),
+                         ["previsao", "do", "abc-123", "em", "a-01-02"])
+
+    def test_top_ranks_the_most_similar_and_drops_unrelated(self):
+        retriever = retrieve_examples.Retriever(self.ROWS)
+        top = retriever.top("guarda 5 ABC-123 no A-01-01", 3)
+        self.assertEqual(top[0]["id"], "t1")
+        self.assertNotIn("t3", [r["id"] for r in top])
+        self.assertEqual(retriever.top("qualquer", 0), [])
+
+    def test_turns_use_the_trained_answer_format(self):
+        turns = retrieve_examples.as_turns(self.ROWS[:2])
+        self.assertEqual([t["role"] for t in turns], ["user", "assistant", "user", "assistant"])
+        self.assertEqual(turns[1]["content"], "{\"intent\": \"putaway\"}")
+        self.assertEqual(json.loads(turns[3]["content"]), {"intent": "adjust"})
+
+    def test_local_messages_put_the_examples_before_the_request(self):
+        row = {"input": "guarde 5 do ABC-123", "messages": [{"role": "system", "content": "S"},
+                                                             {"role": "user", "content": "guarde 5 do ABC-123"}]}
+        retriever = retrieve_examples.Retriever(self.ROWS)
+        messages = predict_local.messages_for(row, retriever, 1)
+        self.assertEqual([m["role"] for m in messages], ["system", "user", "assistant", "user"])
+        self.assertEqual(messages[-1]["content"], "guarde 5 do ABC-123")
+        self.assertEqual(predict_local.messages_for(row, None, 0), row["messages"])
+
+
+class CompareTests(unittest.TestCase):
+    GOLD = [
+        {"id": "a", "input": "guarde 10 do ABC-123 da DOCA-01 no A-01-01",
+         "output": {"intent": "putaway", "recipe": "armazenar_da_doca",
+                    "params": {"sku": "ABC-123", "qty": 10, "dock": "DOCA-01", "target": "A-01-01"}}},
+        {"id": "b", "input": "previsão do tempo", "output": {"intent": "none"}},
+    ]
+
+    def test_cost_uses_the_price_table_and_the_cache(self):
+        line = {"model": "deepseek-flash", "prompt_tokens": 1_000_000, "cache_read_tokens": 500_000, "completion_tokens": 100_000}
+        self.assertAlmostEqual(compare.cost_usd(line), 0.5 * 0.30 + 0.5 * 0.006 + 0.1 * 1.20)
+        self.assertEqual(compare.cost_usd({"model": "nexus-matcher", "prompt_tokens": 900}), 0.0)
+
+    def test_summary_and_pending_rows(self):
+        lines = [
+            {"id": "a", "prediction": json.dumps(self.GOLD[0]["output"]), "seconds": 1.0, "model": "deepseek-flash",
+             "prompt_tokens": 1000, "completion_tokens": 50},
+            {"id": "b", "prediction": "{\"intent\": \"none\"}", "seconds": 3.0, "model": "deepseek-flash",
+             "prompt_tokens": 1000, "completion_tokens": 10},
+        ]
+        row = compare.summarize(self.GOLD, lines, guard=True)
+        self.assertEqual(row["raw"]["exact_match"], 1.0)
+        self.assertEqual(row["guard"]["exact_match"], 1.0)
+        self.assertEqual(row["latency_mean"], 2.0)
+        self.assertEqual(row["latency_p95"], 3.0)
+        self.assertAlmostEqual(row["cost_per_1000"], 1000 * (1000 * 0.30 + 30 * 1.20) / 1_000_000)
+        table = compare.markdown([("flash", row), ("qwen", None)], guard=True)
+        self.assertIn("| flash | 100,0% | 100,0% | 1,000 | 100,0% | 100,0% | 0,3360 | 2,00 | 3,00 |", table)
+        self.assertIn("| qwen | pendente |", table)
+
+    def test_variant_argument(self):
+        self.assertEqual(compare.parse_variant("a=b/c.jsonl"), ("a", pathlib.Path("b/c.jsonl")))
+        with self.assertRaises(Exception):
+            compare.parse_variant("sem-igual")
+
+
+class DeepSeekUsageTests(unittest.TestCase):
+    def test_usage_reads_the_cache_hits(self):
+        payload = json.dumps({"usage": {"prompt_tokens": 900, "completion_tokens": 40, "prompt_cache_hit_tokens": 640}})
+        self.assertEqual(predict_deepseek.read_usage(payload),
+                         {"prompt_tokens": 900, "cache_read_tokens": 640, "completion_tokens": 40})
+
+    def test_zero_shots_is_the_apps_call(self):
+        self.assertEqual(predict_deepseek.few_shot([], 0, 7), [])

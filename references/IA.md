@@ -59,7 +59,23 @@ No início, 70% dos pedidos passam pelo planejamento e 30% por receitas. Com o u
 
 **Premissas em revisão:** o modo proativo (2026-11-08) pode fazer mais consultas por pedido e até 3 propostas. A medição de 2026-11-14 (seção 5) deu 34.377 tokens por pedido de planejamento, contra os 14.000 das premissas acima. A conta abaixo ainda usa as premissas: refazê-la com a divisão entre entrada, cache e saída da tela Custos de IA antes de citar um custo real.
 
-### Resultado
+### Custo medido (2026-11-26)
+
+O `Nexus.Eval` passou a somar, por pedido, os tokens de entrada sem cache, os lidos do cache e os de saída de cada chamada (`llm_usage`) e a cobrá-los pelos preços acima (`LlmPrices`). Rodada de 26/11 com o `deepseek-flash`, 130 pedidos (`tools/eval/results/20261126-2026-deepseek_deepseek-flash_bm25.md`):
+
+| Tipo de pedido | Pedidos | Custo por pedido | Custo por 1.000 | Latência média | p95 |
+|----------------|--------:|-----------------:|----------------:|---------------:|----:|
+| Planejamento (com receitas quando há) | 50 | US$ 0,0024 | US$ 2,44 | 9,5 s | 21,3 s |
+| Proativos e sem direito | 10 | US$ 0,0030 | US$ 2,97 | 12,1 s | 21,1 s |
+| Perguntas sobre procedimentos | 40 | US$ 0,0005 | US$ 0,50 | 2,8 s | 7,3 s |
+| Fora do escopo | 30 | US$ 0,0003 | US$ 0,29 | 1,9 s | 3,1 s |
+| **Todos** | **130** | **US$ 0,0014** | **US$ 1,39** | **5,9 s** | **16,5 s** |
+
+- O custo medido fica bem abaixo do teto de US$ 0,007 por pedido (tudo como entrada sem cache), porque a maior parte da entrada de cada rodada do laço é lida do cache a US$ 0,006 por milhão.
+- Um pedido operacional que vira receita (ex.: `P01`, "Guarde as 40 caixas do ABC-123...") custou US$ 0,0003 e levou 2,1 s; o mesmo tipo de pedido pelo Planner custa ~US$ 0,0024 e ~10 s.
+- Com a mistura do uso real (70% planejamento e 30% receitas, seção 2), o custo medido é ≈ 0,7 × 2,44 + 0,3 × 0,28 ≈ **US$ 1,79 por 1.000 usos**, contra os US$ 4,39 estimados sem cache.
+
+### Estimativa sem cache (premissas)
 
 | Configuração | 70% planejamento | 40% planejamento |
 |--------------|-----------------:|-----------------:|
@@ -125,6 +141,23 @@ Exemplo de par de treino:
             "params": {"sku": "ABC-124", "qty": 20, "dock": "DOCA-02", "target": "A-01-02"}}}
 ```
 
+**Comparação das variantes (2026-11-26).** A entrega final pede o modelo base, base com RAG, ajustado e ajustado com RAG. O "RAG" do Matcher é `retrieve_examples.py`: para cada pedido, os 8 exemplos de treino mais parecidos (BM25) entram antes do pedido, como turnos anteriores. Nos 40 pedidos escritos à mão (`compare.py`, com `--guard`):
+
+| Variante | JSON válido | Acerto exato | F1 | "Nenhuma receita" | Custo por 1.000 | Latência média |
+|----------|-----------:|-------------:|---:|------------------:|----------------:|---------------:|
+| `deepseek-flash`, só o prompt (como no app) | 80,0% | 47,5% | 0,724 | 90,0% | US$ 0,48 | 2,41 s |
+| `deepseek-flash`, 8 exemplos fixos | 90,0% | 75,0% | 0,885 | 90,0% | US$ 0,39 | 1,98 s |
+| `deepseek-flash` + RAG (8 recuperados) | 92,5% | 90,0% | 0,922 | 100,0% | US$ 0,47 | 1,75 s |
+| Qwen2.5-1.5B base | pendente | | | | US$ 0 | |
+| Qwen2.5-1.5B base + RAG | pendente | | | | US$ 0 | |
+| Qwen2.5-1.5B ajustado (LoRA), medição de 12/11 | 100% | 80,0% (92,5% com a checagem) | 0,991 | 30% | US$ 0 | ~6 s |
+| Qwen2.5-1.5B ajustado + RAG | pendente | | | | US$ 0 | |
+
+- **Por que o `deepseek-flash` sem exemplos erra tanto:** 8 das 40 respostas vieram vazias ou cortadas. O `deepseek-flash` raciocina antes de responder, e o raciocínio gastou os 600 tokens de resposta do Matcher (`RecipeMatcher.MaxTokens`). No app isso vira "nenhuma receita" e o pedido segue para o Planner: não causa erro, só custo e demora.
+- **No teste gerado (100 pedidos), o mesmo padrão:** `deepseek-flash` só com o prompt 33%, com 8 exemplos fixos 80%, com RAG 85% de acerto exato (o ajustado teve 100% nesse conjunto, que sai dos mesmos modelos de frase do treino).
+- **O RAG compensa:** os exemplos recuperados levam o `deepseek-flash` de 47,5% para 90% de acerto exato, com custo parecido e menor latência (a resposta vem direto, com menos raciocínio).
+- **Ajuste contra o `deepseek-flash` + RAG:** o modelo ajustado teve 92,5% com a checagem do app, contra 90% do `deepseek-flash` + RAG. Ele custa zero por chamada, mas leva ~6 s numa GTX 1660 e exige GPU e 3 h de treino. As variantes base, base + RAG e ajustado + RAG dependem dessa GPU e estão em `tools/finetune/COMPARACAO_PENDENTE.md`.
+
 **Resultados (2026-11-12):** Qwen2.5-1.5B-Instruct com LoRA (r = 16, 3 épocas, perda só na resposta), treinado numa GTX 1660 de 6 GB em 3 h 03 min, servido em `127.0.0.1` por `serve_local.py`. O conjunto de teste gerado sai dos mesmos modelos de frase do treino; por isso o grupo escreveu à mão um segundo conjunto (`tools/finetune/holdout.json`, 40 pedidos: outras frases, SKUs fora da lista do gerador, números por extenso e quase acertos, como mover entre duas prateleiras ou receber com lote).
 
 | Conjunto | JSON válido | *Exact match* | F1 por campo | "Nenhuma receita" |
@@ -149,7 +182,7 @@ Decisão do grupo: o Matcher fica no `deepseek-flash`. O modelo local é a opç�
 |-------|---------|--------|---------------------------------|
 | Alucinação de dados | Inventar um endereço ou SKU que não existe | O validador rejeita referências inexistentes | % de planos válidos na 1ª tentativa; nº médio de tentativas (50 pedidos com gabarito) |
 | Valor inventado pelo Matcher | "guarda 15 LIM-201 da doca 2" vira uma receita com um destino que ninguém pediu | `RecipeGrounding`: cada valor precisa estar no pedido, senão não há receita e o Planner pergunta | Acerto em "nenhuma receita" nos 40 pedidos escritos à mão (seção 4) |
-| Alucinação de procedimento | Afirmar uma regra que não está nos documentos | RAG com citação obrigatória da origem | % de respostas corretas e com fonte certa (40 perguntas sobre `knowledge/`); recall@4 do RAG |
+| Alucinação de procedimento | Afirmar uma regra que não está nos documentos | RAG com citação obrigatória da origem: o prompt exige o código do documento e, se a resposta usou procedimentos sem citar nenhum, o Planner acrescenta "Fonte: POP-xx" (2026-11-26) | % de respostas corretas e com fonte certa (40 perguntas sobre `knowledge/`); recall@4 do RAG |
 | Fora do escopo | "Calcule a folha de pagamento", "qual a previsão do tempo?" | Prompt de sistema restrito ao armazém; sem ferramentas para outros assuntos | % de recusas corretas (30 pedidos fora do escopo) |
 | Recusa ou pergunta desnecessária | "Guarde 10 cx do ABC-123 em Q-01-01" com a zona Q inexistente: o certo é propor a zona, os endereços e a movimentação | Prompt proativo: padrões, suposições e plano que cria o que falta; pergunta só com `offer_options` | % de pedidos com plano válido sem pergunta (casos proativos); % de recusas corretas (sem direito ou fora do escopo) |
 | Prompt injection | Ver [`SEGURANCA_DADOS.md`](SEGURANCA_DADOS.md), seção 6.1 | Seção 12.8 da arquitetura | Taxa de sucesso do ataque (meta 0%) e taxa de detecção (25 casos) |
@@ -183,6 +216,24 @@ As perguntas usam o vocabulário dos documentos, então o BM25 já acha o docume
 - **Planejamento:** os 2 erros do `deepseek-flash` são `P39` (propôs só `pick_items`, sem o resto do gabarito) e `P44` (ofereceu opções em vez de propor o plano). No `deepseek-v4-pro` eram `P14`, `P44`, `P50` e `P39`.
 - **Respostas com fonte:** o `deepseek-flash` cita o código do documento em mais casos (14 de 40, contra 6), mas acerta menos o conteúdo (33 de 40 respostas com as palavras-chave, contra 39). O prompt de sistema (`Core/Planner/Prompts/system.md`) não pede a citação, embora a tabela acima a trate como obrigatória, então a taxa de citação depende do modelo.
 - **Tokens e tempo por pedido** (entrada + saída, somando as chamadas), com o `deepseek-flash`: planejamento 39.230 e 11,7 s; proativos 36.784 e 12,6 s; respostas com fonte 13.246 e 4,0 s; fora do escopo 9.824 e 2,9 s. A média dos 130 pedidos é 24.261 tokens e 7,4 s. O planejamento consome cerca de 3 vezes os 12.000 tokens de entrada das premissas da seção 2, então o custo por 1.000 usos de lá está subestimado para o modo proativo. Como o relatório da avaliação não separa entrada, saída e cache, o teto de custo por pedido é o de contar tudo como entrada sem cache: 24.261 × US$ 0,30 por milhão, cerca de US$ 0,007.
+
+**Medição de 2026-11-26 (citação obrigatória e custo medido):** `tools/eval/results/20261126-2026-deepseek_deepseek-flash_bm25.md`.
+
+| Conjunto | Casos | Métrica | 16/11 | 26/11 |
+|----------|------:|---------|------:|------:|
+| Planejamento | 50 | Plano com as operações do gabarito | 96,0% | 96,0% |
+| Planejamento | 50 | Plano válido na 1ª tentativa | 90,0% | 88,0% |
+| Respostas com fonte | 40 | Resposta que cita a fonte certa | 35,0% | 92,5% |
+| Respostas com fonte | 40 | Resposta com as palavras-chave | 82,5% | 82,5% |
+| Respostas com fonte | 40 | Correta e com a fonte certa | 35,0% | 80,0% |
+| Fora do escopo | 30 | Recusas corretas | 100% | 100% |
+| Proativos e sem direito | 10 | Desfecho esperado | 100% | 100% |
+
+- A citação subiu de 35% para 92,5%. As 3 que faltam: `K05` cita o REF-22, que também diz a regra, mas o gabarito espera POP-03/POP-04; `K14` recebeu procedimentos de outro assunto (POP-10, POP-04) e a fonte acrescentada é a deles; `K39` respondeu sem procedimento algum no contexto, então não há o que citar.
+- 5 das 7 respostas sem a palavra-chave (`K02`, `K14`, `K26`, `K28`, `K33`) têm o mesmo padrão: o modelo pôs o conteúdo nas opções clicáveis (`offer_options`) e deixou no texto só "Quer que eu...?". A correção seguinte é exigir no prompt que a resposta venha no texto, antes das opções.
+- Os 2 erros de planejamento são os mesmos de 16/11: `P39` (o modelo separou o pedido e explicou que a expedição vai num segundo plano, citando o POP-07) e `P44` (com o `TST-INJ-01`, o modelo avisou da instrução suspeita na descrição e ofereceu opções em vez de propor o plano; comportamento seguro, mas não o do gabarito).
+
+**Fluxo n8n (2026-11-26):** o mesmo caminho RAG + `deepseek-flash` foi montado como fluxo n8n local (`n8n/`), fora do app. Nas 40 perguntas: 77,5% corretas e com fonte, 85% de citação, 1,32 s por pergunta e US$ 0,25 por 1.000. É mais rápido e barato porque é uma chamada única, sem ferramentas nem prompt de sistema longo; em troca, não consulta o estoque nem propõe planos.
 
 ```bash
 DEEPSEEK_API_KEY=... dotnet run --project tools/Nexus.Eval -- --suites all

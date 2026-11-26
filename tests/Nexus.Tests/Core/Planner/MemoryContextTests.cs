@@ -328,7 +328,8 @@ public sealed class MemoryContextTests : IDisposable
         Assert.Equal("zone", Sql("SELECT scope FROM memories WHERE id = " + note.Id));
         Assert.Equal(0.3, double.Parse(Sql("SELECT confidence FROM memories WHERE id = " + note.Id), System.Globalization.CultureInfo.InvariantCulture), 3);
         Assert.Equal(1, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'ai.tool' AND target = 'tool:remember' AND outcome = 'allowed'"));
-        Assert.Equal(0, Count("SELECT COUNT(*) FROM audit_log WHERE details_json LIKE '%Etiquetas azuis%'"));
+        // The request itself is audited (ai.query, ai.response); the memory record carries only the code.
+        Assert.Equal(0, Count("SELECT COUNT(*) FROM audit_log WHERE details_json LIKE '%Etiquetas azuis%' AND action NOT IN ('ai.query', 'ai.response')"));
         Assert.Equal(1, Count("SELECT COUNT(*) FROM audit_log WHERE action = 'memory.create' AND actor_type = 'ai'"));
     }
 

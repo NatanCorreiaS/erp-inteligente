@@ -138,4 +138,27 @@ public sealed class EvalTests : IDisposable
         Assert.Contains("| RAG (40 perguntas) | 5 | recall@4 | 100.0% |", markdown);
         Assert.Contains("| Fora do escopo (30) | 1 | recusas corretas | 100.0% |", markdown);
     }
+
+    [Fact]
+    public void Percentile_uses_the_nearest_rank()
+    {
+        Assert.Equal(9.0, EvalReport.Percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.9));
+        Assert.Equal(10.0, EvalReport.Percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.95));
+        Assert.Equal(4.0, EvalReport.Percentile([4], 0.95));
+        Assert.True(double.IsNaN(EvalReport.Percentile([], 0.95)));
+    }
+
+    [Fact]
+    public void Report_has_measured_cost_and_latency_per_suite()
+    {
+        var report = new EvalReport("teste", DateTimeOffset.UnixEpoch,
+        [
+            new CaseResult("K1", "knowledge", true, "", Seconds: 2, CostUsd: 0.002m),
+            new CaseResult("K2", "knowledge", true, "", Seconds: 4, CostUsd: 0.004m),
+            new CaseResult("S1", "out_of_scope", true, "", Seconds: 1, CostUsd: 0.0006m),
+        ]);
+        var markdown = report.ToMarkdown();
+        Assert.Contains("| knowledge | 2 | 0.00300 | 3.00 | 3.0 | 4.0 |", markdown);
+        Assert.Contains("| todos | 3 | 0.00220 | 2.20 | 2.3 | 4.0 |", markdown);
+    }
 }

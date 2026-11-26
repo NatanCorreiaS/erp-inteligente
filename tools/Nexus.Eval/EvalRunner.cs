@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using erp_inteligente;
 using erp_inteligente.Core.Knowledge;
+using erp_inteligente.Core.Llm;
+using erp_inteligente.Core.Operations;
 using erp_inteligente.Core.Memory;
 using erp_inteligente.Core.Planner;
 using erp_inteligente.Models;
@@ -10,9 +12,13 @@ using erp_inteligente.Models;
 namespace Nexus.Eval;
 
 /// <summary>Outcome of one case: <see cref="Passed"/>, a short note and what it cost.</summary>
-/// <remarks><see cref="Rank"/>: for the RAG suite, the position (1-based) of the first expected document; 0 when absent.</remarks>
+/// <remarks>
+/// <see cref="Rank"/>: for the RAG suite, the position (1-based) of the first expected document; 0 when absent.
+/// <see cref="CostUsd"/>: measured cost of the request (input without cache, cache read and output at the prices of
+/// <see cref="LlmPrices"/>, or the cost the provider reported). <see cref="Output"/>: what the operator saw, shortened.
+/// </remarks>
 public sealed record CaseResult(string Id, string Suite, bool Passed, string Note, int InvalidPlans = 0, bool FirstPlanValid = false,
-    long Tokens = 0, double Seconds = 0, int Rank = 0);
+    long Tokens = 0, double Seconds = 0, int Rank = 0, decimal CostUsd = 0, string Output = "");
 
 /// <summary>The metrics of references/IA.md, section 5, for one run.</summary>
 public sealed record EvalReport(string Label, DateTimeOffset At, IReadOnlyList<CaseResult> Cases)
@@ -23,6 +29,15 @@ public sealed record EvalReport(string Label, DateTimeOffset At, IReadOnlyList<C
     {
         var list = cases.ToList();
         return list.Count == 0 ? double.NaN : (double)list.Count(ok) / list.Count;
+    }
+
+    /// <summary>Nearest-rank percentile (<paramref name="p"/> in 0..1); NaN for no values.</summary>
+    public static double Percentile(IEnumerable<double> values, double p)
+    {
+        var sorted = values.OrderBy(v => v).ToList();
+        if (sorted.Count == 0) return double.NaN;
+        var rank = (int)Math.Ceiling(p * sorted.Count);
+        return sorted[Math.Clamp(rank, 1, sorted.Count) - 1];
     }
 
     public string ToMarkdown()
@@ -55,7 +70,18 @@ public sealed record EvalReport(string Label, DateTimeOffset At, IReadOnlyList<C
         if (proactive.Count > 0) Row("Proativos e sem direito (10)", "desfecho esperado", Rate(proactive, c => c.Passed), proactive.Count);
         var llm = Cases.Where(c => c.Suite != "rag").ToList();
         if (llm.Count > 0)
+        {
             b.AppendLine().AppendLine($"Tokens médios por pedido: {llm.Average(c => c.Tokens).ToString("0", inv)}; tempo médio: {llm.Average(c => c.Seconds).ToString("0.0", inv)} s.");
+            b.AppendLine().AppendLine("## Custo e latência medidos").AppendLine();
+            b.AppendLine("| Conjunto | Pedidos | Custo médio (US$) | Custo por 1.000 (US$) | Latência média (s) | p95 (s) |").AppendLine("|---|---:|---:|---:|---:|---:|");
+            foreach (var group in llm.GroupBy(c => c.Suite).Append(llm.GroupBy(_ => "todos").Single()))
+            {
+                var list = group.ToList();
+                var cost = list.Average(c => c.CostUsd);
+                b.AppendLine($"| {group.Key} | {list.Count} | {cost.ToString("0.00000", inv)} | {(cost * 1000).ToString("0.00", inv)} | " +
+                    $"{list.Average(c => c.Seconds).ToString("0.0", inv)} | {Percentile(list.Select(c => c.Seconds), 0.95).ToString("0.0", inv)} |");
+            }
+        }
         var failed = Cases.Where(c => !c.Passed).ToList();
         if (failed.Count > 0)
         {
@@ -78,11 +104,7 @@ public sealed class EvalRunner(AppHost host, Func<string, Task<UserSession>> ses
         .ToDictionary(s => s.Path, s => DocumentCode(s.Markdown), StringComparer.Ordinal);
 
     /// <summary>"POP-03" from "# POP-03 Armazenagem (putaway)".</summary>
-    public static string DocumentCode(string markdown)
-    {
-        var first = markdown.Split('\n', 2)[0].TrimStart('#', ' ');
-        return first.Split(' ', 2)[0];
-    }
+    public static string DocumentCode(string markdown) => KnowledgeIndexer.DocumentCode(markdown);
 
     public async Task<IReadOnlyList<CaseResult>> RagAsync(IReadOnlyList<KnowledgeCase> cases, CancellationToken ct)
     {
@@ -109,7 +131,7 @@ public sealed class EvalRunner(AppHost host, Func<string, Task<UserSession>> ses
             var ops = run.Result is PlannerProposals p && p.Items.Count > 0 ? OpsOf(p.Items[0].Draft.Json) : [];
             var ok = ScorePlanning(c.Ops, ops);
             results.Add(new CaseResult(c.Id, "planning", ok, ok ? "" : $"{Kind(run.Result)}; operações: [{string.Join(", ", ops)}]",
-                run.InvalidPlans, run.FirstPlanValid, run.Tokens, run.Seconds));
+                run.InvalidPlans, run.FirstPlanValid, run.Tokens, run.Seconds, CostUsd: run.CostUsd, Output: run.Output));
             log?.WriteLine($"planning {c.Id} {(ok ? "ok" : "falhou")}");
         }
         return results;
@@ -126,7 +148,7 @@ public sealed class EvalRunner(AppHost host, Func<string, Task<UserSession>> ses
             var (correct, cited) = ScoreAnswer(text, c.Keywords, codes);
             results.Add(new CaseResult(c.Id, "knowledge", correct && cited,
                 correct && cited ? "" : (correct ? "" : "faltou palavra-chave; ") + (cited ? "" : "sem a fonte " + string.Join("/", codes)),
-                Tokens: run.Tokens, Seconds: run.Seconds));
+                Tokens: run.Tokens, Seconds: run.Seconds, CostUsd: run.CostUsd, Output: run.Output));
             log?.WriteLine($"knowledge {c.Id} {(correct && cited ? "ok" : "falhou")}");
         }
         return results;
@@ -139,7 +161,8 @@ public sealed class EvalRunner(AppHost host, Func<string, Task<UserSession>> ses
         {
             var run = await RunAsync("op.joao", c.Request, ct);
             var ok = ScoreExpectation("refusal", run.Result);
-            results.Add(new CaseResult(c.Id, "out_of_scope", ok, ok ? "" : Kind(run.Result), Tokens: run.Tokens, Seconds: run.Seconds));
+            results.Add(new CaseResult(c.Id, "out_of_scope", ok, ok ? "" : Kind(run.Result), Tokens: run.Tokens, Seconds: run.Seconds,
+                CostUsd: run.CostUsd, Output: run.Output));
             log?.WriteLine($"scope {c.Id} {(ok ? "ok" : "falhou")}");
         }
         foreach (var c in proactive)
@@ -147,7 +170,7 @@ public sealed class EvalRunner(AppHost host, Func<string, Task<UserSession>> ses
             var run = await RunAsync(c.User, c.Request, ct);
             var ok = ScoreExpectation(c.Expect, run.Result);
             results.Add(new CaseResult(c.Id, "proactive", ok, ok ? "" : $"esperado {c.Expect}, veio {Kind(run.Result)}",
-                run.InvalidPlans, run.FirstPlanValid, run.Tokens, run.Seconds));
+                run.InvalidPlans, run.FirstPlanValid, run.Tokens, run.Seconds, CostUsd: run.CostUsd, Output: run.Output));
             log?.WriteLine($"proactive {c.Id} {(ok ? "ok" : "falhou")}");
         }
         return results;
@@ -196,7 +219,21 @@ public sealed class EvalRunner(AppHost host, Func<string, Task<UserSession>> ses
 
     // ---- one request --------------------------------------------------------------------------------------
 
-    private sealed record Run(PlannerResult Result, int InvalidPlans, bool FirstPlanValid, long Tokens, double Seconds);
+    private const int MaxOutputChars = 400;
+
+    private sealed record Run(PlannerResult Result, int InvalidPlans, bool FirstPlanValid, long Tokens, double Seconds, decimal CostUsd)
+    {
+        public string Output => Shorten(Result switch
+        {
+            PlannerAnswer a => a.Text,
+            PlannerProposals p => (p.Text ?? "") + " [planos: " + string.Join("; ", p.Items.Select(i => i.Title)) + "]",
+            PlannerEscalated e => "escalado: " + e.Reason,
+            PlannerFailed f => "falhou: " + f.Reason,
+            _ => "",
+        });
+    }
+
+    private static string Shorten(string text) => text.Length <= MaxOutputChars ? text : text[..MaxOutputChars] + "…";
 
     private sealed class NoProgress : IProgress<string>
     {
@@ -223,7 +260,31 @@ public sealed class EvalRunner(AppHost host, Func<string, Task<UserSession>> ses
             "SELECT json_extract(details_json, '$.code') FROM audit_log WHERE id > $m AND action = 'ai.tool' " +
             "AND target = 'tool:propose_plan' AND json_valid(details_json) ORDER BY id", auditMark);
         var tokens = Scalar("SELECT COALESCE(SUM(prompt_tokens + completion_tokens), 0) FROM llm_usage WHERE id > $m", usageMark);
-        return new Run(result, codes.Count(c => c == "plan_invalid"), codes.FirstOrDefault() == "plan_valid", tokens, seconds);
+        return new Run(result, codes.Count(c => c == "plan_invalid"), codes.FirstOrDefault() == "plan_valid", tokens, seconds, Cost(usageMark));
+    }
+
+    /// <summary>Cost of the llm_usage rows after <paramref name="mark"/>: the provider's figure when given, else the price table.</summary>
+    private decimal Cost(long mark)
+    {
+        using var connection = host.Database.OpenApplication();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT provider, model, prompt_tokens, completion_tokens, cache_read_tokens, cost_usd FROM llm_usage WHERE id > $m";
+        command.Parameters.AddWithValue("$m", mark);
+        using var reader = command.ExecuteReader();
+        var total = 0m;
+        while (reader.Read())
+        {
+            if (!reader.IsDBNull(5)) { total += (decimal)reader.GetDouble(5); continue; }
+            var provider = reader.GetString(0) switch
+            {
+                "deepseek" => LlmProviderKind.DeepSeek,
+                "openrouter" => LlmProviderKind.OpenRouter,
+                _ => LlmProviderKind.Local,
+            };
+            if (LlmPrices.For(provider, reader.GetString(1)) is { } price)
+                total += LlmPrices.Cost(price, reader.GetInt64(2), reader.GetInt64(3), reader.GetInt64(4));
+        }
+        return total;
     }
 
     private long Scalar(string sql, long mark = 0)

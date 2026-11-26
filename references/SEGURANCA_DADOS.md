@@ -16,6 +16,32 @@ Como o SQLite não tem usuários de banco, RLS ou `DENY` nativos, cada mecanismo
 | Mascaramento | Colunas `*_masked` e views `v_*_masked` |
 | Criptografia | SQLCipher (arquivo inteiro) + AES-256-GCM nas colunas `*_enc` |
 
+**Por que SQLite.** O Nexus roda no posto do armazém, sem servidor e sem equipe de TI (o problema do projeto). Um SGBD servidor exigiria instalar, atualizar e proteger um serviço em rede em cada cliente, abriria uma porta e traria contas de banco para administrar. Com SQLite, o banco é um arquivo cifrado que só o app abre, e o controle de acesso fica num único ponto (policy engine + triggers + *authorizer*), testado em Python e em C#. O custo é não ter `GRANT`/`DENY` nem RLS nativos, compensado como na tabela acima.
+
+### 1.1 A mesma matriz num SGBD com `GRANT`/`DENY` (SQL Server)
+
+Para mostrar a matriz com `GRANT`/`DENY` nativos, `db/sqlserver/roles.sql` recria um subconjunto do schema no SQL Server 2022. O app continua em SQLite; o SQL Server é só a demonstração, rodada num contêiner descartável.
+
+| Regra da matriz | No SQL Server |
+|-----------------|---------------|
+| `stock.read` para todo papel humano | `GRANT SELECT` às tabelas para o papel `nexus_staff`, do qual os quatro papéis humanos são membros |
+| `sensitive.read` negado ao operador e ao auditor | `DENY SELECT ON products (unit_cost)`: o `DENY` de coluna vence o `GRANT` de tabela herdado de `nexus_staff` |
+| Dados sensíveis para quem não tem `sensitive.read` | Máscara dinâmica (`MASKED WITH`) no CNPJ e no e-mail; `GRANT UNMASK` só ao supervisor e ao administrador; `DENY UNMASK` à IA |
+| Operador move, não ajusta | `GRANT UPDATE (location)` e `DENY UPDATE (quantity)` |
+| Administrador e auditor não operam estoque | `DENY INSERT, UPDATE, DELETE ON stock_balances` |
+| Auditoria imutável | `DENY UPDATE, DELETE ON audit_log` a todos os papéis; `GRANT SELECT` só a supervisor, administrador e auditor |
+| IA só nas views `v_ai_*` | `GRANT SELECT` nas views e `DENY` explícito de tudo nas tabelas-base (o encadeamento de dono deixa a view ler a tabela) |
+| `user.manage` / `role.manage` | Só o administrador tem `ALTER ON ROLE::...` |
+| Escopo por armazém | RLS: `SECURITY POLICY` com predicado de filtro e de bloqueio por `SESSION_CONTEXT('warehouse_id')` |
+
+**`DENY` justificado:** o operador e o auditor precisam ler o produto para trabalhar, então herdam `SELECT` na tabela inteira. O custo unitário é dado comercial sensível e não serve a nenhum dos dois. O `DENY` na coluna `unit_cost` tira só esse campo, e vence o `GRANT` mesmo que alguém dê `SELECT` na tabela a `nexus_staff` no futuro. Só um `REVOKE` explícito do `DENY` libera a coluna, e nenhum desses papéis tem o direito de fazê-lo.
+
+`db/sqlserver/test_sqlserver.py` sobe o contêiner com uma senha aleatória (passada só por variável de ambiente), aplica o script e executa cada comando como cada usuário do seed (`EXECUTE AS USER`). São 12 testes, todos passando em 26/11/2026: leitura por papel, coluna negada (erro 230), máscara, mover e ajustar, auditoria imutável, IA só nas views, escalonamento de privilégio (`ALTER ROLE` e `GRANT` pelo próprio usuário, erros 15151/1088) e RLS por armazém (bloqueio 33504).
+
+```bash
+python3 -m unittest db/sqlserver/test_sqlserver.py -v   # precisa de Docker; baixa mcr.microsoft.com/mssql/server:2022-latest
+```
+
 ## 2. Modelo de dados com classificação
 
 Legenda: **P** = público, **I** = interno, **S** = sensível.
@@ -219,6 +245,26 @@ sqlite3 /tmp/erp.db < db/benchmark.sql   # depois
 
 O teste `OptimizationTests` confere automaticamente que os planos de execução trocam o `SCAN` pelos índices.
 
+**Nova medição (26/11/2026, mesma máquina e método, média de 5):** Q1 77,1 → 0,06 ms e Q2 37,9 → 8,9 ms. Os planos são os mesmos da tabela acima.
+
+### O que resta de custo na Q2
+
+Depois dos índices, a Q2 não lê nenhuma linha desnecessária: são 4.291 lotes na janela de 30 dias e 12.862 saldos no resultado. O tempo que sobra é proporcional ao tamanho do resultado. `db/q2_breakdown.py` mede cada junção (26/11/2026, mediana de 7):
+
+| Etapa | Linhas | Tempo acumulado | Custo da etapa |
+|-------|-------:|----------------:|---------------:|
+| Faixa de datas no índice de cobertura dos lotes | 4.291 | 0,10 ms | 0,1 ms |
+| + saldos pelo índice `(lot_id, location_id, quantity)` | 12.862 | 3,3 ms | 3,2 ms (uma busca em árvore B por lote) |
+| + produto pela chave primária | 12.862 | 4,1 ms | 0,8 ms |
+| + endereço pela chave primária | 12.862 | 6,4 ms | 2,3 ms (uma busca por saldo) |
+| + ordenação por `expires_on, sku` | 12.862 | 8,9 ms | 2,5 ms (`USE TEMP B-TREE FOR LAST TERM OF ORDER BY`) |
+
+- **Ordenação (~28%):** o índice já entrega os lotes por validade; o desempate pelo `sku` vem de outra tabela e obriga uma árvore B temporária. Desempatar por `product_id`, que está no índice, tira essa etapa (7,0 ms), mas muda a ordem exibida quando os SKUs não seguem a ordem dos ids.
+- **Junções por chave (~35%):** 12.862 buscas no endereço e 4.291 no produto. Só a desnormalização (gravar `sku` e o código do endereço no saldo) as tiraria. Isso custaria manter cópias em toda movimentação e renomeação, para ganhar ~3 ms numa consulta de relatório; não compensa.
+- **O que compensa: paginar.** A tela mostra uma página por vez. Com `LIMIT 50` e a ordem do índice, a consulta para nos primeiros 50 saldos: **0,02 ms**. O custo de 9 ms só aparece quando alguém exporta os 12.862 saldos de uma vez.
+
+Conclusão: o custo restante da Q2 é o de entregar ~13 mil linhas com duas junções. Não há mais varredura para remover.
+
 ## 6. Ataques testados
 
 ### 6.1 Prompt injection (IA)
@@ -245,6 +291,9 @@ dotnet test tests/Nexus.Tests --filter "FullyQualifiedName~PromptInjectionSuite"
 ```
 
 ### 6.2 SQL injection e escalonamento de privilégio (banco)
+
+**Ataque documentado e correção.** Payload `ABC-123' OR '1'='1` no filtro de SKU. Montada por concatenação, a consulta devolveria o estoque de todos os produtos (e de todos os armazéns). Correção: toda consulta usa parâmetros (`$sku`, `$warehouse_id`) e SQL constante. O payload vira um SKU inexistente e a consulta volta vazia (`SqlInjectionTests`, `ProductSearchTests`, `SearchToolsTests`). Mesmo um SQL que passasse pela conexão da IA seria barrado pelo *authorizer*, que só deixa ler `v_ai_*`. No escalonamento de privilégio, um `UPDATE role_permissions` que daria `plan.approve` à IA é abortado pela trigger `role_permissions_deny_ai_escalation` (`PrivilegeEscalationTests`).
+
 
 | Teste | Onde | Estado |
 |-------|------|--------|
@@ -284,7 +333,28 @@ dotnet test tests/Nexus.Tests --filter "FullyQualifiedName~PromptInjectionSuite"
 | Embeddings: CPF ou e-mail na pergunta enviada ao provedor, envio para host que não seja `127.0.0.1`, leitura dos vetores pela IA, `load_extension()` liberado depois do `sqlite-vec`, vetor com tamanho errado, troca de provedor por quem não é administrador, falha do provedor quebrando o pedido | `EmbeddingsClientTests`, `HybridSearchTests`, `EmbeddingSettingsTests`, `MemoryContextTests` e `MigrationTests` (C#); `KnowledgeEmbeddingTests` e `MigrationTo9Tests` (Python) | Automatizado ✅ |
 | Treinamento: plano executado no treinamento aparecendo no banco real, chave do provedor copiada para o treinamento, pasta temporária sobrando, persona que não é do seed (inclusive o agente de IA e SQL no nome), treinamento aberto depois do fim da sessão real, clique fora da área destacada, consumo de tokens sem dono | `TrainingSandboxTests`, `TutorialRunnerTests` e `TrainingUiTests` (C#) | Automatizado ✅ |
 
+| SQL Server: papéis com `GRANT`/`DENY`, `DENY` de coluna, máscara, auditoria imutável, IA só nas views, escalonamento por `ALTER ROLE`/`GRANT`, RLS por armazém | `db/sqlserver/test_sqlserver.py` (Python + Docker) | Automatizado ✅ |
+| IA vazando dado protegido, por perfil (operador, supervisor, administrador, auditor): CPF, e-mail, telefone, CNPJ e custo cifrados não chegam ao modelo nem à resposta | `AiLeakByRoleTests` (C#) | Automatizado ✅ |
+| Pedido e resposta da IA na auditoria, com dados pessoais mascarados | `AiAuditTrailTests` (C#) | Automatizado ✅ |
+
 ```bash
-python3 -m unittest discover -s db/tests -v   # 115 testes
-dotnet test tests/Nexus.Tests                 # 1479 testes do app
+python3 -m unittest discover -s db/tests -v           # 118 testes
+python3 -m unittest db/sqlserver/test_sqlserver.py -v  # 12 testes (Docker)
+dotnet test tests/Nexus.Tests                         # 1.492 testes do app
 ```
+
+### 6.3 Integração: auditoria completa e a IA sem vazamento
+
+**Quem consultou o quê e o que a IA respondeu.** Cada pedido ao Nexus deixa, na cadeia de hash da auditoria e em nome de quem pediu (`on_behalf_of`):
+
+| Ação | Quando | Detalhes |
+|------|--------|----------|
+| `ai.query` | Antes de qualquer chamada ao modelo (negada se o papel não tem `stock.read`) | O pedido, até 500 caracteres |
+| `ai.context` | Memórias e procedimentos postos no pedido | Ids das memórias e caminhos dos documentos |
+| `ai.tool` | Cada ferramenta chamada | Nome, argumentos resumidos e resultado (`plan_valid`, `plan_invalid`...) |
+| `ai.injection` | Texto com cara de instrução nos dados | Origem e referência, sem o texto |
+| `ai.response` | Fim do pedido, por qualquer caminho (resposta, propostas, receita, escalado, falha) | Tipo, texto da resposta até 1.000 caracteres, nº de propostas, fontes citadas |
+
+O `SensitiveDataRedactor` mascara CPF, CNPJ, e-mail, telefone e chaves no pedido e na resposta antes do hash (`AiAuditTrailTests`).
+
+**Prova de que a IA não vaza o que o banco protege.** `AiLeakByRoleTests` grava CPF, e-mail, telefone, CNPJ e custo fictícios, cifrados, em usuários, fornecedores, clientes e produtos. Para cada perfil (operador, supervisor, administrador e auditor), um modelo roteirizado chama as 8 ferramentas de leitura e a busca nos procedimentos, e pede os dados. O teste confere que nenhum valor, nem o texto cifrado nem as colunas mascaradas, aparece no que foi enviado ao modelo ou na resposta. O caso da supervisora é o que importa: ela tem `sensitive.read` e vê os dados na tela, mas o direito efetivo da IA (IA ∩ usuário) não tem `sensitive.read`, e as views `v_ai_*` não têm as colunas.
