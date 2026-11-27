@@ -1,0 +1,72 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:erp_inteligente.ViewModels"
+        xmlns:views="using:erp_inteligente.Views"
+        x:Class="erp_inteligente.Views.TrainingWindow"
+        x:DataType="vm:TrainingSessionViewModel"
+        Title="Nexus · Treinamento"
+        Width="1360" Height="820" MinWidth="1100" MinHeight="680"
+        WindowStartupLocation="CenterOwner">
+
+    <!-- Guided training (references/UI.md, section 10): the sandbox shell under a dim layer with one highlighted
+         area and a text panel next to it. This overlay exists only in this window (NEGATIVAS_WEB.md, section 3). -->
+    <Grid>
+        <DockPanel>
+            <!-- Always visible: this is not the real warehouse -->
+            <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceRaisedBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,8">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <PathIcon Classes="warning" Data="{StaticResource Icon.Training}" Width="14" Height="14" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Margin="10,0,0,0" FontWeight="Medium" VerticalAlignment="Center"
+                               Text="{x:Static vm:TrainingSessionViewModel.Banner}" />
+                    <TextBlock Grid.Column="2" Classes="secondary" VerticalAlignment="Center" Text="{Binding Runner.LessonText}" />
+                </Grid>
+            </Border>
+            <views:ShellView DataContext="{Binding Shell}" />
+        </DockPanel>
+
+        <views:TutorialScrim Name="Scrim" Fill="{DynamicResource ScrimBrush}" Outline="{DynamicResource BrandAccentBrush}" />
+
+        <!-- The step text: a flat panel placed beside the highlighted area by the code-behind -->
+        <Canvas Name="CalloutLayer">
+            <Border Name="Callout" Width="380" Background="{DynamicResource SurfaceRaisedBrush}"
+                    BorderBrush="{DynamicResource TextDisabledBrush}" BorderThickness="1" CornerRadius="0">
+                <StackPanel>
+                    <Rectangle Height="2" Fill="{DynamicResource BrandAccentBrush}" />
+                    <StackPanel Margin="16,12,16,14" Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="label" Text="{Binding Runner.LessonText}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="1" Classes="tabular secondary" Text="{Binding Runner.StepCounter}" Margin="10,0,0,0" />
+                        </Grid>
+                        <TextBlock Classes="boardTitle" Text="{Binding Runner.StepTitle}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Runner.StepText}" TextWrapping="Wrap" />
+
+                        <!-- A request the person can copy into the Nexus field -->
+                        <StackPanel Spacing="6" IsVisible="{Binding Runner.HasSuggestion}">
+                            <TextBlock Classes="label" Text="Pedido sugerido" />
+                            <TextBlock Text="{Binding Runner.Suggestion}" TextWrapping="Wrap" FontWeight="Medium" />
+                            <Button Classes="neutral" HorizontalAlignment="Left" Command="{Binding Runner.UseSuggestionCommand}"
+                                    ToolTip.Tip="Copia o pedido para o campo do Nexus; você ainda precisa enviar">
+                                <TextBlock Text="Usar este pedido" />
+                            </Button>
+                        </StackPanel>
+
+                        <Rectangle Classes="rule" Margin="0,4,0,0" />
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                            <Button Classes="neutral" Command="{Binding Runner.BackCommand}" ToolTip.Tip="Voltar um passo">
+                                <TextBlock Text="Voltar" />
+                            </Button>
+                            <Button Grid.Column="1" Classes="neutral" Margin="8,0,0,0" Command="{Binding LeaveCommand}"
+                                    ToolTip.Tip="Fecha o treinamento e descarta o ambiente fictício">
+                                <TextBlock Text="Sair do treinamento" />
+                            </Button>
+                            <Button Name="NextButton" Grid.Column="3" Classes="primary" Command="{Binding Runner.NextCommand}">
+                                <TextBlock Text="{Binding Runner.NextLabel}" />
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Canvas>
+    </Grid>
+</Window>

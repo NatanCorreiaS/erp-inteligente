@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:erp_inteligente.ViewModels"
+             x:Class="erp_inteligente.Views.TrainingView"
+             x:DataType="vm:TrainingViewModel">
+
+    <!-- Treinamento (references/UI.md, section 10): what the training is, the lessons of the role and the start button -->
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+        <TextBlock Grid.Row="0" MaxWidth="820" HorizontalAlignment="Left" TextWrapping="Wrap"
+                   Text="O treinamento abre uma cópia do sistema com dados fictícios e guia você pelas telas e pela IA. Nada do que for feito lá altera o armazém real. Os passos com a IA usam a chave configurada e consomem tokens." />
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*" Margin="0,14,0,0">
+            <Button Classes="primary" Command="{Binding StartCommand}" ToolTip.Tip="Abre o ambiente de treinamento">
+                <TextBlock Text="{Binding StartLabel}" />
+            </Button>
+            <Button Grid.Column="1" Classes="neutral" Margin="8,0,0,0" Command="{Binding StartLessonCommand}"
+                    ToolTip.Tip="Abre o ambiente de treinamento na lição selecionada">
+                <TextBlock Text="Abrir a lição selecionada" />
+            </Button>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="14,0,0,0" IsVisible="{Binding IsWorking}">
+                <PathIcon Classes="spinning info" Data="{StaticResource Icon.Progress}" Width="14" Height="14" />
+                <TextBlock Classes="secondary" Text="Ambiente de treinamento em uso" VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="2" Margin="0,14,0,0">
+            <Rectangle Classes="rule" />
+            <TextBlock Classes="secondary" Margin="0,8" Text="{Binding ProgressText}" />
+        </StackPanel>
+
+        <DataGrid Grid.Row="3" ItemsSource="{Binding Lessons}" SelectedItem="{Binding SelectedLesson}">
+            <DataGrid.Columns>
+                <DataGridTextColumn x:DataType="vm:TrainingLessonRow" Header="Lição" Binding="{Binding Number}" Width="70" />
+                <DataGridTextColumn x:DataType="vm:TrainingLessonRow" Header="Título" Binding="{Binding Title}" Width="240" />
+                <DataGridTextColumn x:DataType="vm:TrainingLessonRow" Header="O que você aprende" Binding="{Binding Summary}" Width="*" />
+                <DataGridTextColumn x:DataType="vm:TrainingLessonRow" Header="Estado" Binding="{Binding StateText}" Width="220" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Feedback: a line with icon and text, never a toast -->
+        <Grid Grid.Row="4" ColumnDefinitions="Auto,*" Margin="0,10,0,0" IsVisible="{Binding HasError}">
+            <PathIcon Classes="error" Data="{StaticResource Icon.Error}" Width="14" Height="14" Margin="0,2,10,0" VerticalAlignment="Top" />
+            <TextBlock Grid.Column="1" Text="{Binding ErrorText}" TextWrapping="Wrap" />
+        </Grid>
+    </Grid>
+</UserControl>

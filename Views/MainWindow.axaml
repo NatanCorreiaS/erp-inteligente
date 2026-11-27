@@ -1,0 +1,15 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:erp_inteligente.ViewModels"
+        xmlns:views="using:erp_inteligente.Views"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1360" d:DesignHeight="820"
+        x:Class="erp_inteligente.Views.MainWindow"
+        x:DataType="vm:ShellViewModel"
+        Title="Nexus"
+        Width="1360" Height="820" MinWidth="1100" MinHeight="680"
+        WindowStartupLocation="CenterScreen">
+
+    <views:ShellView />
+</Window>

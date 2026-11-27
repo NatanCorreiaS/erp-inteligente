@@ -1,0 +1,209 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:erp_inteligente.ViewModels"
+             xmlns:m="using:erp_inteligente.Models"
+             x:Class="erp_inteligente.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+    <ScrollViewer>
+        <StackPanel>
+            <Rectangle Classes="rule" />
+            <ItemsControl ItemsSource="{Binding Fields}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="m:SummaryTotal">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="200,*" Margin="0,10">
+                                <TextBlock Classes="label" Text="{Binding Label}" VerticalAlignment="Center" />
+                                <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                            </Grid>
+                            <Rectangle Classes="rule" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- LLM provider: the key lives in the OS key store and is never shown again -->
+            <StackPanel IsVisible="{Binding HasLlm}">
+                <TextBlock Classes="boardTitle" Text="Provedor de LLM" Margin="0,22,0,10" />
+                <Rectangle Classes="rule" />
+
+                <!-- Key state of every provider -->
+                <ItemsControl ItemsSource="{Binding ProviderRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ProviderStatusRow">
+                            <StackPanel>
+                                <Grid ColumnDefinitions="200,*" Margin="0,10">
+                                    <TextBlock Classes="label" Text="{Binding Name}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                        <PathIcon Classes="success" Data="{StaticResource Icon.Accept}" Width="14" Height="14"
+                                                  IsVisible="{Binding IsConfigured}" />
+                                        <PathIcon Classes="warning" Data="{StaticResource Icon.Warning}" Width="14" Height="14"
+                                                  IsVisible="{Binding !IsConfigured}" />
+                                        <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Classes="rule" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Classes="secondary" Margin="0,10,0,0" Text="{Binding KeyStatusText}" TextWrapping="Wrap"
+                           IsVisible="{Binding IsReadOnlyLlm}" />
+
+                <StackPanel IsVisible="{Binding CanConfigure}">
+                    <Grid ColumnDefinitions="200,Auto,Auto,Auto,Auto,Auto" Margin="0,10">
+                        <TextBlock Classes="label" Text="Nova chave" VerticalAlignment="Center" />
+                        <ComboBox Name="KeyProviderBox" Grid.Column="1" MinWidth="140" ItemsSource="{Binding KeyProviders}"
+                                  SelectedItem="{Binding SelectedKeyProvider}" IsEnabled="{Binding !IsWorking}"
+                                  ToolTip.Tip="Provedor da chave" />
+                        <TextBox Name="ApiKeyBox" Grid.Column="2" Width="300" Margin="8,0,0,0"
+                                 Text="{Binding ApiKey}" PasswordChar="●" MaxLength="200" PlaceholderText="chave de API"
+                                 IsEnabled="{Binding !IsWorking}" />
+                        <Button Grid.Column="3" Classes="primary" Margin="10,0,0,0" Command="{Binding SaveKeyCommand}"
+                                ToolTip.Tip="Salvar no cofre do sistema (Alt+S)">
+                            <AccessText Text="_Salvar" />
+                        </Button>
+                        <Button Grid.Column="4" Classes="neutral" Margin="8,0,0,0" Command="{Binding ClearKeyCommand}"
+                                ToolTip.Tip="Remover a chave do cofre">
+                            <TextBlock Text="Remover" />
+                        </Button>
+                        <Button Grid.Column="5" Classes="neutral" Margin="8,0,0,0" Command="{Binding TestCommand}"
+                                ToolTip.Tip="Confere a chave no provedor escolhido (Alt+T)">
+                            <AccessText Text="_Testar" />
+                        </Button>
+                    </Grid>
+                    <Rectangle Classes="rule" />
+                </StackPanel>
+
+                <!-- Model per role (references/ARQUITETURA.md, section 10) -->
+                <TextBlock Classes="boardTitle" Text="Modelo por papel" Margin="0,22,0,10" />
+                <Rectangle Classes="rule" />
+                <!-- OpenRouter takes any author/model id: the box becomes editable and Aplicar saves the typed id -->
+                <Grid ColumnDefinitions="200,Auto,Auto,Auto" Margin="0,10">
+                    <TextBlock Classes="label" Text="Planejamento" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" MinWidth="170" ItemsSource="{Binding PlannerProviders}"
+                              SelectedItem="{Binding PlannerProvider}" IsEnabled="{Binding CanConfigure}" />
+                    <ComboBox Name="PlannerModelBox" Grid.Column="2" MinWidth="300" Margin="8,0,0,0" ItemsSource="{Binding PlannerModels}"
+                              SelectedItem="{Binding PlannerModel}" IsEditable="{Binding PlannerAcceptsAnyModel}"
+                              Text="{Binding PlannerModelText}" IsEnabled="{Binding CanConfigure}" />
+                    <Button Grid.Column="3" Classes="neutral" Margin="8,0,0,0" Command="{Binding ApplyPlannerModelCommand}"
+                            IsVisible="{Binding PlannerAcceptsAnyModel}" ToolTip.Tip="Usar o modelo digitado (autor/modelo)">
+                        <TextBlock Text="Aplicar" />
+                    </Button>
+                </Grid>
+                <Rectangle Classes="rule" />
+                <Grid ColumnDefinitions="200,Auto,Auto,Auto" Margin="0,10">
+                    <TextBlock Classes="label" Text="Receitas (Matcher)" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" MinWidth="170" ItemsSource="{Binding MatcherProviders}"
+                              SelectedItem="{Binding MatcherProvider}" IsEnabled="{Binding CanConfigure}" />
+                    <ComboBox Name="MatcherModelBox" Grid.Column="2" MinWidth="300" Margin="8,0,0,0" ItemsSource="{Binding MatcherModels}"
+                              SelectedItem="{Binding MatcherModel}" IsEditable="{Binding MatcherAcceptsAnyModel}"
+                              Text="{Binding MatcherModelText}" IsEnabled="{Binding CanConfigure}" />
+                    <Button Grid.Column="3" Classes="neutral" Margin="8,0,0,0" Command="{Binding ApplyMatcherModelCommand}"
+                            IsVisible="{Binding MatcherAcceptsAnyModel}" ToolTip.Tip="Usar o modelo digitado (autor/modelo)">
+                        <TextBlock Text="Aplicar" />
+                    </Button>
+                </Grid>
+                <Rectangle Classes="rule" />
+
+                <!-- Local fine-tuned model (loopback only) -->
+                <StackPanel IsVisible="{Binding CanConfigure}">
+                    <Grid ColumnDefinitions="200,Auto,Auto,Auto,*" Margin="0,10">
+                        <TextBlock Classes="label" Text="Modelo local" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="http://127.0.0.1:" VerticalAlignment="Center" />
+                        <TextBox Grid.Column="2" Width="90" Text="{Binding LocalPortText}" MaxLength="5" PlaceholderText="8080" />
+                        <Button Grid.Column="3" Classes="neutral" Margin="8,0,0,0" Command="{Binding SaveLocalPortCommand}"
+                                ToolTip.Tip="Salvar a porta do servidor local">
+                            <TextBlock Text="Salvar porta" />
+                        </Button>
+                        <Button Grid.Column="4" Classes="neutral" Margin="8,0,0,0" HorizontalAlignment="Left"
+                                Command="{Binding TestLocalCommand}" ToolTip.Tip="Faz uma chamada mínima ao modelo local">
+                            <TextBlock Text="Testar modelo local" />
+                        </Button>
+                    </Grid>
+                    <Rectangle Classes="rule" />
+                </StackPanel>
+
+                <!-- Embeddings of the RAG search (feature 5): off or the local model -->
+                <StackPanel IsVisible="{Binding HasEmbeddings}">
+                    <Grid ColumnDefinitions="200,Auto,Auto,*" Margin="0,10">
+                        <TextBlock Classes="label" Text="Busca por significado" VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1" MinWidth="300" ItemsSource="{Binding EmbeddingOptions}"
+                                  SelectedItem="{Binding SelectedEmbedding}" IsEnabled="{Binding CanConfigure}" />
+                        <Button Grid.Column="2" Classes="neutral" Margin="8,0,0,0" Command="{Binding IndexCommand}"
+                                IsVisible="{Binding CanConfigure}"
+                                ToolTip.Tip="Gera os vetores dos trechos de procedimento que ainda não têm">
+                            <TextBlock Text="Indexar procedimentos" />
+                        </Button>
+                    </Grid>
+                    <TextBlock Classes="secondary" Margin="200,0,0,10" TextWrapping="Wrap" Text="{Binding EmbeddingStatusText}" />
+                    <Rectangle Classes="rule" />
+                </StackPanel>
+
+                <!-- Feedback: a line with icon and text, never a toast -->
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="200,10,0,0">
+                    <PathIcon Classes="spinning info" Data="{StaticResource Icon.Progress}" Width="14" Height="14"
+                              IsVisible="{Binding IsWorking}" />
+                    <PathIcon Classes="success" Data="{StaticResource Icon.Accept}" Width="14" Height="14"
+                              IsVisible="{Binding FeedbackIsSuccess}" />
+                    <PathIcon Classes="error" Data="{StaticResource Icon.Error}" Width="14" Height="14"
+                              IsVisible="{Binding FeedbackIsError}" />
+                    <TextBlock Text="{Binding Feedback}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Encrypted backups (feature 9): administrators only -->
+            <StackPanel IsVisible="{Binding HasBackups}">
+                <TextBlock Classes="boardTitle" Text="Backup" Margin="0,22,0,10" />
+                <Rectangle Classes="rule" />
+                <Grid ColumnDefinitions="200,*" Margin="0,10">
+                    <TextBlock Classes="label" Text="Pasta" VerticalAlignment="Center" />
+                    <SelectableTextBlock Grid.Column="1" Text="{Binding BackupDirectory}" TextWrapping="Wrap" />
+                </Grid>
+                <Rectangle Classes="rule" />
+                <TextBlock Classes="secondary" Margin="0,10,0,10" TextWrapping="Wrap"
+                           Text="Cópias criptografadas com a chave do cofre deste computador: sem ela, não abrem. Um backup é feito por dia ao abrir o app, e ficam os 7 mais recentes." />
+                <ListBox ItemsSource="{Binding Backups}" SelectedItem="{Binding SelectedBackup}" MaxHeight="200">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:BackupRow">
+                            <Grid ColumnDefinitions="260,160,*">
+                                <TextBlock Classes="tabular" Text="{Binding FileName}" />
+                                <TextBlock Grid.Column="1" Classes="tabular" Text="{Binding CreatedText}" />
+                                <TextBlock Grid.Column="2" Classes="tabular" Text="{Binding SizeText}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Classes="secondary" Margin="0,6,0,0" Text="Nenhum backup ainda." IsVisible="{Binding HasNoBackups}" />
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                    <Button Classes="neutral" Command="{Binding CreateBackupCommand}" ToolTip.Tip="Copia o banco agora (Alt+B)">
+                        <AccessText Text="Fazer _backup agora" />
+                    </Button>
+                    <Button Classes="neutral" Command="{Binding RequestRestoreCommand}" ToolTip.Tip="Volta o banco ao backup escolhido">
+                        <TextBlock Text="Restaurar…" />
+                    </Button>
+                </StackPanel>
+                <!-- Two-step confirmation: a line with the consequence, then the button that does it -->
+                <StackPanel Margin="0,12,0,0" IsVisible="{Binding IsConfirmingRestore}">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <PathIcon Classes="warning" Data="{StaticResource Icon.Warning}" Width="14" Height="14" Margin="0,2,10,0" VerticalAlignment="Top" />
+                        <TextBlock Grid.Column="1" Text="{Binding RestoreQuestion}" TextWrapping="Wrap" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="24,10,0,0">
+                        <Button Classes="primary" Command="{Binding ConfirmRestoreCommand}">
+                            <TextBlock Text="Confirmar restauração" />
+                        </Button>
+                        <Button Classes="neutral" Command="{Binding CancelRestoreCommand}">
+                            <TextBlock Text="Cancelar" />
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,10,0,0" IsVisible="{Binding HasBackupFeedback}">
+                    <PathIcon Classes="error" Data="{StaticResource Icon.Error}" Width="14" Height="14" IsVisible="{Binding BackupFeedbackIsError}" />
+                    <PathIcon Classes="success" Data="{StaticResource Icon.Accept}" Width="14" Height="14" IsVisible="{Binding !BackupFeedbackIsError}" />
+                    <TextBlock Text="{Binding BackupFeedback}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
