@@ -11,6 +11,30 @@
 
 Entrega para as duas disciplinas, cursadas pelos quatro integrantes: **Projeto de Inteligência Artificial** e **Segurança e Otimização de BD** (parte comum, parte de IA, parte de Segurança e parte de integração).
 
+## Contribuição de cada integrante
+
+### Natan Correia da Silva (231071692)
+
+Fui o responsável pela arquitetura do projeto, escolha da stack, preparação do repositório, escrita das especificações técnicas no diretório `references/`, pela construção do roadmap e pela implementação das features 1 a 5 do roadmap, servindo como coordenador do projeto, mantendo a visão e supervisão de longo prazo do software.
+
+### Samuel Santos César (232070317)
+
+Implementei as features 6 a 9 do roadmap:
+- defesas contra prompt injection, com o detector, a máscara de dados sensíveis na auditoria e a suíte de 25 ataques;
+- receitas com o Recipe Matcher;
+- o experimento de fine-tuning;
+- a operação: backup criptografado, painéis de auditoria e de custos, e instaladores.
+
+Depois fiz a busca híbrida do RAG (embeddings locais, `sqlite-vec` e RRF), os conjuntos de avaliação com o executor `Nexus.Eval`, e a contagem do cache de prompt no painel de custos. Treinei o Matcher (Qwen2.5-1.5B com LoRA) na minha GPU e escrevi o conjunto de 40 pedidos à mão. Criei a checagem `RecipeGrounding`, que recusa valores inventados. Por fim, medi o modelo ajustado contra o modelo base (seção IA.4).
+
+### Clara Gabryellen Paixão Aderno (231070720)
+
+Atuei como uma das testadoras de bugs e do software, realizando testes a cada nova versão desenvolvida. Identificamos possíveis erros, avaliamos o funcionamento e damos os feedbacks. Assim, contribuímos para a melhoria da qualidade e usabilidade do sistema.
+
+### Rayan Santos Silva (231070220)
+
+Fiquei responsável por testar o software durante o desenvolvimento, identificando bugs, apontando melhorias e dando feedback a cada nova versão, ajudando a equipe a corrigir problemas e aprimorar o sistema a cada atualização.
+
 ## Problema
 
 Armazéns pequenos e médios controlam estoque com planilhas ou sistemas cheios de telas, que exigem treinamento e geram erros de digitação, estoque divergente e produtos vencidos. O **Nexus** é um app desktop em que o operador pede em português ("guarde as 40 caixas do ABC-123 que estão na doca") e uma IA consulta os dados, monta um plano, mostra o efeito e o executa **com segurança**. O supervisor só decide o que é crítico.
@@ -731,32 +755,6 @@ erp-inteligente/
 ├── relatorio/       # Relatórios (Markdown; os PDFs ficam fora do git)
 └── references/      # Especificação: arquitetura, IA, segurança, UI, diagramas, UML, árvore
 ```
-
-## Contribuição de cada integrante
-
-Os quatro integrantes cursam as duas disciplinas (**Projeto de Inteligência Artificial** e **Segurança e Otimização de BD**).
-
-### Natan Correia da Silva (231071692)
-
-Fui o responsável pela arquitetura do projeto, escolha da stack, preparação do repositório, escrita das especificações técnicas no diretório `references/`, pela construção do roadmap e pela implementação das features 1 a 5 do roadmap, servindo como coordenador do projeto, mantendo a visão e supervisão de longo prazo do software.
-
-### Samuel Santos César (232070317)
-
-Implementei as features 6 a 9 do roadmap:
-- defesas contra prompt injection, com o detector, a máscara de dados sensíveis na auditoria e a suíte de 25 ataques;
-- receitas com o Recipe Matcher;
-- o experimento de fine-tuning;
-- a operação: backup criptografado, painéis de auditoria e de custos, e instaladores.
-
-Depois fiz a busca híbrida do RAG (embeddings locais, `sqlite-vec` e RRF), os conjuntos de avaliação com o executor `Nexus.Eval`, e a contagem do cache de prompt no painel de custos. Treinei o Matcher (Qwen2.5-1.5B com LoRA) na minha GPU e escrevi o conjunto de 40 pedidos à mão. Criei a checagem `RecipeGrounding`, que recusa valores inventados. Por fim, medi o modelo ajustado contra o modelo base (seção IA.4).
-
-### Clara Gabryellen Paixão Aderno (231070720)
-
-Atuei como uma das testadoras de bugs e do software, realizando testes a cada nova versão desenvolvida. Identificamos possíveis erros, avaliamos o funcionamento e damos os feedbacks. Assim, contribuímos para a melhoria da qualidade e usabilidade do sistema.
-
-### Rayan Santos Silva (231070220)
-
-Fiquei responsável por testar o software durante o desenvolvimento, identificando bugs, apontando melhorias e dando feedback a cada nova versão, ajudando a equipe a corrigir problemas e aprimorar o sistema a cada atualização.
 
 ## Documentação
 
