@@ -51,7 +51,7 @@ Situação em 26/11/2026, depois de todas as medições desta entrega. Os númer
 
 | Área | Limitação | Efeito para o usuário |
 |------|-----------|-----------------------|
-| IA | **Comparação incompleta do fine-tuning.** Das quatro variantes do Qwen2.5-1.5B, só o modelo ajustado foi medido (12/11). Base, base + RAG e ajustado + RAG precisam da GPU onde ele foi treinado, que não está na máquina desta medição. | Nenhum no app (o Matcher usa o `deepseek-flash`). Falta o número para decidir se o modelo local substitui a API. Passo a passo em `tools/finetune/COMPARACAO_PENDENTE.md`. |
+| IA | **Modelo local lento e sem ganho com RAG.** O Qwen2.5-1.5B ajustado acerta 92,5% com a checagem, mas leva 6,4 s por pedido numa GTX 1660 e exige GPU. Com os exemplos do RAG, cai para 80% e leva 10,3 s. | Nenhum no app padrão (o Matcher usa o `deepseek-flash`). Quem escolher o provedor local espera cerca de 4 s a mais por pedido de receita e deve deixar o RAG de exemplos desligado. |
 | IA | **Resposta escondida nas opções.** Em 5 das 40 perguntas sobre procedimentos, o modelo pôs o conteúdo nos botões de opção e deixou no texto só "Quer que eu...?". | A fonte aparece, mas a regra não: o operador precisa clicar numa opção ou abrir o documento. |
 | IA | **Matcher sem exemplos estoura o limite de tokens.** O `deepseek-flash` raciocina antes de responder, e em 8 de 40 pedidos o raciocínio gastou os 600 tokens do Matcher. | Nenhum erro: o pedido segue para o Planner. Custa cerca de 5 vezes mais e leva cerca de 7 s a mais. |
 | IA | **Contexto automático não acha perguntas genéricas.** A busca exige 2 termos em comum com o procedimento. "Como corrijo um erro do assistente?" não trouxe o POL-20. | Resposta genérica, sem fonte. |
@@ -75,21 +75,23 @@ Situação em 26/11/2026, depois de todas as medições desta entrega. Os númer
 
 **O que o grupo faria a seguir**
 
-1. **Fechar a comparação do fine-tuning** e decidir o Matcher pelo número: o modelo local custa zero por chamada, mas leva ~6 s numa GPU de entrada; o `deepseek-flash` + RAG leva 1,8 s.
-2. **Pôr o RAG de exemplos no Matcher do app.** No `deepseek-flash`, ele levou o acerto exato de 47,5% para 90% sem aumentar o custo, e elimina as respostas cortadas pelo limite de tokens.
-3. **Exigir a resposta no texto antes das opções** e medir de novo as 40 perguntas. A meta é passar de 80% para 90% de respostas corretas e com fonte.
-4. **Paginar as telas de relatório.** A Q2 cai de 9 ms para 0,02 ms com `LIMIT 50` na ordem do índice.
-5. **Testar com operadores reais** a janela de treinamento e o chat, medindo o tempo até o primeiro plano confirmado.
-6. **Suporte ao Keychain do macOS** e exportação das chaves para trocar de máquina.
+1. **Pôr o RAG de exemplos no Matcher do app, só com o `deepseek-flash`.** Nele, o acerto exato foi de 47,5% para 90% sem aumentar o custo, e as respostas cortadas pelo limite de tokens sumiram. No Qwen ajustado o RAG piorou o acerto (92,5% → 80%), então fica desligado no provedor local.
+2. **Exigir a resposta no texto antes das opções** e medir de novo as 40 perguntas. A meta é passar de 80% para 90% de respostas corretas e com fonte.
+3. **Paginar as telas de relatório.** A Q2 cai de 9 ms para 0,02 ms com `LIMIT 50` na ordem do índice.
+4. **Testar com operadores reais** a janela de treinamento e o chat, medindo o tempo até o primeiro plano confirmado.
+5. **Suporte ao Keychain do macOS** e exportação das chaves para trocar de máquina.
 
 ### 1.3 Contribuição individual
 
-| Integrante | O que fez no projeto |
-|------------|----------------------|
-| Natan Correia da Silva | *(a preencher)* |
-| Clara Gabryellen Paixão Aderno | *(a preencher)* |
-| Samuel Santos César | *(a preencher)* |
-| Rayan Santos Silva | *(a preencher)* |
+Os quatro integrantes cursam as duas disciplinas.
+
+**Natan Correia da Silva.** Fui o responsável pela arquitetura do projeto, escolha da stack, preparação do repositório, escrita das especificações técnicas no diretório `references/`, pela construção do roadmap e pela implementação das features 1 a 5 do roadmap, servindo como coordenador do projeto, mantendo a visão e supervisão de longo prazo do software.
+
+**Samuel Santos César.** Implementei as features 6 a 9 do roadmap: defesas contra prompt injection, com o detector, a máscara de dados sensíveis na auditoria e a suíte de 25 ataques; receitas com o Recipe Matcher; o experimento de fine-tuning; a operação: backup criptografado, painéis de auditoria e de custos, e instaladores. Depois fiz a busca híbrida do RAG (embeddings locais, `sqlite-vec` e RRF), os conjuntos de avaliação com o executor `Nexus.Eval`, e a contagem do cache de prompt no painel de custos. Treinei o Matcher (Qwen2.5-1.5B com LoRA) na minha GPU e escrevi o conjunto de 40 pedidos à mão. Criei a checagem `RecipeGrounding`, que recusa valores inventados. Por fim, medi o modelo ajustado contra o modelo base (seção 2.2).
+
+**Clara Gabryellen Paixão Aderno.** Atuei como uma das testadoras de bugs e do software, realizando testes a cada nova versão desenvolvida. Identificamos possíveis erros, avaliamos o funcionamento e damos os feedbacks. Assim, contribuímos para a melhoria da qualidade e usabilidade do sistema.
+
+**Rayan Santos Silva.** Fiquei responsável por testar o software durante o desenvolvimento, identificando bugs, apontando melhorias e dando feedback a cada nova versão, ajudando a equipe a corrigir problemas e aprimorar o sistema a cada atualização.
 
 <div class="quebra"></div>
 
@@ -137,18 +139,19 @@ Tarefa do Matcher: transformar o pedido em `{intent, recipe, params}`, ou "nenhu
 
 | Variante | JSON válido | Acerto exato | F1 | "Nenhuma receita" | Custo por 1.000 | Latência média |
 |----------|-----------:|-------------:|---:|------------------:|----------------:|---------------:|
-| Qwen2.5-1.5B base | pendente | | | | US$ 0 | |
-| Qwen2.5-1.5B base + RAG | pendente | | | | US$ 0 | |
-| Qwen2.5-1.5B ajustado (LoRA, 12/11) | 100% | 80,0% (92,5% com a checagem) | 0,991 | 30% | US$ 0 | ~6 s (GTX 1660) |
-| Qwen2.5-1.5B ajustado + RAG | pendente | | | | US$ 0 | |
+| Qwen2.5-1.5B base | 100% | 37,5% (47,5% com a checagem) | 0,624 | 50% | US$ 0 | 5,0 s (GTX 1660) |
+| Qwen2.5-1.5B base + RAG | 95,0% | 65,0% (82,5% com a checagem) | 0,922 | 0% | US$ 0 | 10,8 s (GTX 1660) |
+| Qwen2.5-1.5B ajustado (LoRA) | 100% | 80,0% (92,5% com a checagem) | 0,991 | 30% | US$ 0 | 6,4 s (GTX 1660) |
+| Qwen2.5-1.5B ajustado + RAG | 97,5% | 65,0% (80,0% com a checagem) | 0,897 | 20% | US$ 0 | 10,3 s (GTX 1660) |
 | `deepseek-flash`, só o prompt (como no app) | 80,0% | 47,5% | 0,724 | 90% | US$ 0,48 | 2,4 s |
 | `deepseek-flash`, 8 exemplos fixos | 90,0% | 75,0% | 0,885 | 90% | US$ 0,39 | 2,0 s |
 | `deepseek-flash` + RAG | 92,5% | 90,0% | 0,922 | 100% | US$ 0,47 | 1,8 s |
 
-- O ajuste levou o Qwen a 92,5% com a checagem, acima do `deepseek-flash` + RAG (90%), a custo zero por chamada. Em troca, precisa de GPU, de 3 h de treino e leva ~6 s por pedido nessa GPU. O custo fixo (máquina e energia) não entra na coluna.
-- O RAG de exemplos é o que mais melhora o modelo de prateleira: +42,5 pontos no `deepseek-flash`, com o mesmo custo.
+- O ajuste levou o Qwen de 47,5% (base, com a checagem) a 92,5%, acima do `deepseek-flash` + RAG (90%), a custo zero por chamada. Em troca, precisa de GPU, de 3 h de treino e leva 6,4 s por pedido nessa GPU. O custo fixo (máquina e energia) não entra na coluna.
+- O RAG de exemplos é o que mais melhora o modelo de prateleira: +42,5 pontos no `deepseek-flash` e +35 pontos no Qwen base (82,5% com a checagem), sem treino. O preço no Qwen local é a latência: o prompt passa de ~480 para ~1.180 tokens e o tempo dobra (5,0 s → 10,8 s).
+- No modelo ajustado, o RAG **piorou** o acerto (92,5% → 80% com a checagem) e dobrou a latência. O modelo foi treinado sem exemplos antes do pedido e passa a copiar campos dos exemplos recuperados (por exemplo, a intenção de um e a receita de outro). Ajuste e RAG não se somam: basta um dos dois.
 - O ponto fraco do modelo ajustado é inventar o valor que falta ("nenhuma receita" 30% sem a checagem); a checagem do app resolve isso para qualquer provedor.
-- Decisão atual: o Matcher fica no `deepseek-flash`; o modelo local é a opção de quem não quer enviar dados para fora. As linhas pendentes serão preenchidas pelo colega com a GPU (`COMPARACAO_PENDENTE.md`).
+- Decisão atual: o Matcher fica no `deepseek-flash` + RAG, que tem quase o mesmo acerto, 1,8 s de latência e não exige GPU; o modelo ajustado, sem RAG, é a opção de quem não quer enviar dados para fora. Medições do Qwen em 26/11 numa GTX 1660 (`tools/finetune/results/pred_qwen_*`).
 
 ### 2.3 Prompt injection
 

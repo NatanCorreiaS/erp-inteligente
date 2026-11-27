@@ -148,15 +148,19 @@ Exemplo de par de treino:
 | `deepseek-flash`, só o prompt (como no app) | 80,0% | 47,5% | 0,724 | 90,0% | US$ 0,48 | 2,41 s |
 | `deepseek-flash`, 8 exemplos fixos | 90,0% | 75,0% | 0,885 | 90,0% | US$ 0,39 | 1,98 s |
 | `deepseek-flash` + RAG (8 recuperados) | 92,5% | 90,0% | 0,922 | 100,0% | US$ 0,47 | 1,75 s |
-| Qwen2.5-1.5B base | pendente | | | | US$ 0 | |
-| Qwen2.5-1.5B base + RAG | pendente | | | | US$ 0 | |
-| Qwen2.5-1.5B ajustado (LoRA), medição de 12/11 | 100% | 80,0% (92,5% com a checagem) | 0,991 | 30% | US$ 0 | ~6 s |
-| Qwen2.5-1.5B ajustado + RAG | pendente | | | | US$ 0 | |
+| Qwen2.5-1.5B base | 100,0% | 37,5% (47,5% com a checagem) | 0,624 | 50,0% | US$ 0 | 4,95 s |
+| Qwen2.5-1.5B base + RAG (8 recuperados) | 95,0% | 65,0% (82,5% com a checagem) | 0,922 | 0,0% | US$ 0 | 10,82 s |
+| Qwen2.5-1.5B ajustado (LoRA) | 100,0% | 80,0% (92,5% com a checagem) | 0,991 | 30,0% | US$ 0 | 6,41 s |
+| Qwen2.5-1.5B ajustado + RAG (8 recuperados) | 97,5% | 65,0% (80,0% com a checagem) | 0,897 | 20,0% | US$ 0 | 10,25 s |
+
+As linhas do Qwen foram medidas em 26/11 numa GTX 1660 de 6 GB (transformers em fp16, `serve_local.py`); o ajustado repetiu exatamente a medição de 12/11. As predições estão em `tools/finetune/results/pred_qwen_*_holdout.jsonl`.
 
 - **Por que o `deepseek-flash` sem exemplos erra tanto:** 8 das 40 respostas vieram vazias ou cortadas. O `deepseek-flash` raciocina antes de responder, e o raciocínio gastou os 600 tokens de resposta do Matcher (`RecipeMatcher.MaxTokens`). No app isso vira "nenhuma receita" e o pedido segue para o Planner: não causa erro, só custo e demora.
 - **No teste gerado (100 pedidos), o mesmo padrão:** `deepseek-flash` só com o prompt 33%, com 8 exemplos fixos 80%, com RAG 85% de acerto exato (o ajustado teve 100% nesse conjunto, que sai dos mesmos modelos de frase do treino).
 - **O RAG compensa:** os exemplos recuperados levam o `deepseek-flash` de 47,5% para 90% de acerto exato, com custo parecido e menor latência (a resposta vem direto, com menos raciocínio).
-- **Ajuste contra o `deepseek-flash` + RAG:** o modelo ajustado teve 92,5% com a checagem do app, contra 90% do `deepseek-flash` + RAG. Ele custa zero por chamada, mas leva ~6 s numa GTX 1660 e exige GPU e 3 h de treino. As variantes base, base + RAG e ajustado + RAG dependem dessa GPU e estão em `tools/finetune/COMPARACAO_PENDENTE.md`.
+- **O RAG também ajuda o Qwen base:** de 47,5% para 82,5% com a checagem, sem treino. O custo é a latência local: o prompt passa de ~480 para ~1.180 tokens e o tempo dobra (4,95 s → 10,82 s).
+- **Ajuste e RAG não se somam:** no modelo ajustado, os exemplos recuperados derrubaram o acerto de 92,5% para 80% com a checagem e dobraram a latência. O modelo foi treinado sem exemplos antes do pedido e passa a misturar campos deles (em h02, a intenção `adjust` com a receita `armazenar_da_doca`). Com o ajuste, o RAG de exemplos fica desligado.
+- **Ajuste contra o `deepseek-flash` + RAG:** o modelo ajustado teve 92,5% com a checagem do app, contra 90% do `deepseek-flash` + RAG. Ele custa zero por chamada, mas leva 6,4 s numa GTX 1660 e exige GPU e 3 h de treino; o `deepseek-flash` + RAG responde em 1,75 s por US$ 0,47 a cada 1.000 pedidos. O ganho de 2,5 pontos não paga a GPU para um armazém pequeno; o modelo local vale para quem não pode enviar dados para fora.
 
 **Resultados (2026-11-12):** Qwen2.5-1.5B-Instruct com LoRA (r = 16, 3 épocas, perda só na resposta), treinado numa GTX 1660 de 6 GB em 3 h 03 min, servido em `127.0.0.1` por `serve_local.py`. O conjunto de teste gerado sai dos mesmos modelos de frase do treino; por isso o grupo escreveu à mão um segundo conjunto (`tools/finetune/holdout.json`, 40 pedidos: outras frases, SKUs fora da lista do gerador, números por extenso e quase acertos, como mover entre duas prateleiras ou receber com lote).
 
