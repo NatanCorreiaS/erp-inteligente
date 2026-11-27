@@ -9,7 +9,7 @@
 | Samuel Santos César | 232070317 |
 | Rayan Santos Silva | 231070220 |
 
-Entrega para as duas disciplinas: **Projeto de Inteligência Artificial** e **Segurança e Otimização de BD** (parte comum, parte de IA, parte de Segurança e parte de integração).
+Entrega para as duas disciplinas, cursadas pelos quatro integrantes: **Projeto de Inteligência Artificial** e **Segurança e Otimização de BD** (parte comum, parte de IA, parte de Segurança e parte de integração).
 
 ## Problema
 
@@ -550,7 +550,7 @@ App **desktop nativo** em **C# + Avalonia** (não é web nem SaaS). Banco **SQLi
 - **LLM e custo medido (26/11, 130 pedidos, `deepseek-flash`, preço de pico com o cache de prompt):** **US$ 1,39 por 1.000 pedidos** e **5,9 s** de latência média (p95 16,5 s). Por tipo: planejamento US$ 2,44 e 9,5 s; perguntas sobre procedimentos US$ 0,50 e 2,8 s; recusas fora do escopo US$ 0,29 e 1,9 s; um pedido resolvido por receita, US$ 0,28 por 1.000 e 2,1 s. Com 70% de planejamento e 30% de receitas, ≈ US$ 1,79 por 1.000 usos. Detalhes e a estimativa sem cache em [`references/IA.md`](references/IA.md), seção 2.
 - **RAG:** chunks por seção `##` dos 22 procedimentos, indexados na abertura, com busca FTS5/BM25 sem acento; memórias e trechos relevantes entram no pedido como dados delimitados. Com embeddings ligados em Configurações (um modelo local em `127.0.0.1`), a busca é híbrida: top-20 do BM25 + top-20 por cosseno (distância pelo `sqlite-vec`), combinados por *Reciprocal Rank Fusion*; a pergunta vai mascarada e, sem embeddings, a busca continua só BM25.
 - **Memórias:** por armazém, gravadas pela IA (`remember`) e pelo sistema (rejeições) através de um filtro que recusa dados pessoais e texto com cara de instrução; só o supervisor corrige e arquiva, na tela Memórias.
-- **Fine-tuning:** um modelo aberto pequeno com LoRA transforma pedidos em `{intent, recipe, params}`. Métricas: *exact match*, F1 por campo e % de JSON válido. Comparação com o `deepseek-flash` nos 40 pedidos escritos à mão (26/11): só o prompt 47,5% de acerto exato, com 8 exemplos fixos 75%, com RAG (8 exemplos recuperados por BM25) 90%; o Qwen2.5-1.5B ajustado teve 80%, e 92,5% com a checagem do app. As variantes base, base + RAG e ajustado + RAG do Qwen precisam da GPU e estão em [`tools/finetune/COMPARACAO_PENDENTE.md`](tools/finetune/COMPARACAO_PENDENTE.md).
+- **Fine-tuning:** um modelo aberto pequeno com LoRA transforma pedidos em `{intent, recipe, params}`. Métricas: *exact match*, F1 por campo e % de JSON válido. Comparação com o `deepseek-flash` nos 40 pedidos escritos à mão (26/11): só o prompt 47,5% de acerto exato, com 8 exemplos fixos 75%, com RAG (8 exemplos recuperados por BM25) 90%; no Qwen2.5-1.5B (GTX 1660), com a checagem do app, o base teve 47,5%, o base + RAG 82,5%, o ajustado 92,5% e o ajustado + RAG 80% (o RAG atrapalha o modelo ajustado e dobra a latência, de 6,4 s para 10,3 s). Tabela completa em [`references/IA.md`](references/IA.md), seção 4.
 - **Citação obrigatória da fonte (26/11):** o prompt exige o código do documento e, se a resposta usou procedimentos sem citar nenhum, o Planner acrescenta "Fonte: POP-xx". A citação correta subiu de 35% para 92,5% nas 40 perguntas, e as respostas corretas e com a fonte, de 35% para 80%.
 - **n8n:** fluxo local exportado ([`n8n/avaliacao_rag.json`](n8n/avaliacao_rag.json)), sem segredo (só a referência da credencial, conferida por `tools/tests/test_n8n_export.py`). Nas 40 perguntas: 77,5% corretas e com fonte, 1,3 s e US$ 0,25 por 1.000.
 - **Dados:** 22 documentos **fictícios** em [`knowledge/`](knowledge/README.md) (procedimentos e políticas de um centro de distribuição inventado).
@@ -734,12 +734,29 @@ erp-inteligente/
 
 ## Contribuição de cada integrante
 
-| Integrante | Matrícula | O que fez no projeto |
-|------------|-----------|----------------------|
-| Natan Correia da Silva | 231071692 | *(a preencher)* |
-| Clara Gabryellen Paixão Aderno | 231070720 | *(a preencher)* |
-| Samuel Santos César | 232070317 | *(a preencher)* |
-| Rayan Santos Silva | 231070220 | *(a preencher)* |
+Os quatro integrantes cursam as duas disciplinas (**Projeto de Inteligência Artificial** e **Segurança e Otimização de BD**).
+
+### Natan Correia da Silva (231071692)
+
+Fui o responsável pela arquitetura do projeto, escolha da stack, preparação do repositório, escrita das especificações técnicas no diretório `references/`, pela construção do roadmap e pela implementação das features 1 a 5 do roadmap, servindo como coordenador do projeto, mantendo a visão e supervisão de longo prazo do software.
+
+### Samuel Santos César (232070317)
+
+Implementei as features 6 a 9 do roadmap:
+- defesas contra prompt injection, com o detector, a máscara de dados sensíveis na auditoria e a suíte de 25 ataques;
+- receitas com o Recipe Matcher;
+- o experimento de fine-tuning;
+- a operação: backup criptografado, painéis de auditoria e de custos, e instaladores.
+
+Depois fiz a busca híbrida do RAG (embeddings locais, `sqlite-vec` e RRF), os conjuntos de avaliação com o executor `Nexus.Eval`, e a contagem do cache de prompt no painel de custos. Treinei o Matcher (Qwen2.5-1.5B com LoRA) na minha GPU e escrevi o conjunto de 40 pedidos à mão. Criei a checagem `RecipeGrounding`, que recusa valores inventados. Por fim, medi o modelo ajustado contra o modelo base (seção IA.4).
+
+### Clara Gabryellen Paixão Aderno (231070720)
+
+Atuei como uma das testadoras de bugs e do software, realizando testes a cada nova versão desenvolvida. Identificamos possíveis erros, avaliamos o funcionamento e damos os feedbacks. Assim, contribuímos para a melhoria da qualidade e usabilidade do sistema.
+
+### Rayan Santos Silva (231070220)
+
+Fiquei responsável por testar o software durante o desenvolvimento, identificando bugs, apontando melhorias e dando feedback a cada nova versão, ajudando a equipe a corrigir problemas e aprimorar o sistema a cada atualização.
 
 ## Documentação
 
@@ -754,7 +771,7 @@ erp-inteligente/
 | [`entrega_final.md`](relatorio/entrega_final.md) | Entrega final: limitações, contribuições, resultados de IA, Segurança e integração (o PDF sai com `tools/readme_to_pdf.py`) |
 | [`relatorio_andamento.md`](relatorio/relatorio_andamento.md) | Relatório de andamento de 1 a 2 páginas (16/11) |
 | [`n8n/README.md`](n8n/README.md) | Fluxo n8n de avaliação: como rodar, resultado e segredos |
-| [`COMPARACAO_PENDENTE.md`](tools/finetune/COMPARACAO_PENDENTE.md) | Comparação do fine-tuning em 4 variantes: o que falta rodar na máquina com GPU |
+| [`COMPARACAO_PENDENTE.md`](tools/finetune/COMPARACAO_PENDENTE.md) | Comparação do fine-tuning em 4 variantes: roteiro para repetir a medição na máquina com GPU (concluída em 26/11) |
 
 ## Regras atendidas
 

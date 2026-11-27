@@ -1,5 +1,7 @@
 # Comparação do fine-tuning: o que falta rodar (passagem de tarefa)
 
+> **Concluído em 26/11/2026.** As quatro variantes do Qwen foram medidas numa GTX 1660; as predições estão em `results/pred_qwen_*_holdout.jsonl` e os números em `references/IA.md` (seção 4), no `README.md` e em `relatorio/entrega_final.md` (seção 2.2). Este roteiro fica para quem quiser repetir a medição.
+
 **Para quem:** o integrante com a GPU NVIDIA onde o Matcher foi treinado (GTX 1660, 6 GB) e onde está o modelo `nexus-matcher/merged`.
 **Prazo:** antes de gerar o PDF final da entrega (27/11/2026, 23h59).
 **Por quê:** a entrega pede o acerto, o custo e a latência de quatro variantes: modelo base, base com RAG, ajustado e ajustado com RAG. As variantes do `deepseek-flash` já foram medidas em 26/11 nesta máquina, que não tem GPU. Faltam as quatro do Qwen.
